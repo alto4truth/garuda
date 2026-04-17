@@ -514,3 +514,115 @@ pub fn r2_score(y_true: &[f64], y_pred: &[f64]) -> f64 {
         }
     }
 }
+
+pub fn gradient_descent(x: &[f64], y: &[f64], learning_rate: f64, iterations: usize) -> (f64, f64) {
+    let mut m = 0.0;
+    let mut b = 0.0;
+    let n = x.len() as f64;
+    for _ in 0..iterations {
+        let m_grad = -2.0 / n
+            * x.iter()
+                .zip(y.iter())
+                .map(|(xi, yi)| (yi - m * xi - b) * xi)
+                .sum::<f64>();
+        let b_grad = -2.0 / n
+            * y.iter()
+                .zip(x.iter())
+                .map(|(yi, xi)| yi - m * xi - b)
+                .sum::<f64>();
+        m -= learning_rate * m_grad;
+        b -= learning_rate * b_grad;
+    }
+    (m, b)
+}
+
+pub fn sigmoid(x: f64) -> f64 {
+    1.0 / (1.0 + (-x).exp())
+}
+pub fn sigmoid_derivative(x: f64) -> f64 {
+    let s = sigmoid(x);
+    s * (1.0 - s)
+}
+pub fn relu(x: f64) -> f64 {
+    if x > 0.0 {
+        x
+    } else {
+        0.0
+    }
+}
+pub fn relu_derivative(x: f64) -> f64 {
+    if x > 0.0 {
+        1.0
+    } else {
+        0.0
+    }
+}
+pub fn tanh_activation(x: f64) -> f64 {
+    x.tanh()
+}
+pub fn tanh_derivative(x: f64) -> f64 {
+    let t = x.tanh();
+    1.0 - t * t
+}
+pub fn softmax(values: &[f64]) -> Vec<f64> {
+    let max_val = values.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
+    let exp_sum: f64 = values.iter().map(|v| (v - max_val).exp()).sum();
+    values
+        .iter()
+        .map(|v| (v - max_val).exp() / exp_sum)
+        .collect()
+}
+pub fn leaky_relu(x: f64) -> f64 {
+    if x > 0.0 {
+        x
+    } else {
+        0.01 * x
+    }
+}
+pub fn elu(x: f64) -> f64 {
+    if x > 0.0 {
+        x
+    } else {
+        (x + 1.0).exp() - 1.0
+    }
+}
+
+pub fn normalize_minmax(values: &[f64]) -> Vec<f64> {
+    if values.is_empty() {
+        return vec![];
+    }
+    let min = *values.iter().min().unwrap();
+    let max = *values.iter().max().unwrap();
+    if (max - min).abs() < f64::EPSILON {
+        return values.iter().map(|_| 0.5).collect();
+    }
+    values.iter().map(|v| (v - min) / (max - min)).collect()
+}
+
+pub fn normalize_zscore(values: &[f64]) -> Vec<f64> {
+    if values.is_empty() {
+        return vec![];
+    }
+    let mean = values.iter().sum::<f64>() / values.len() as f64;
+    let std = analysis_mod::std_dev(values);
+    if std == 0.0 {
+        return values.iter().map(|_| 0.0).collect();
+    }
+    values.iter().map(|v| (v - mean) / std).collect()
+}
+
+pub fn normalize_l1(values: &[f64]) -> Vec<f64> {
+    let sum: f64 = values.iter().map(|v| v.abs()).sum();
+    if sum == 0.0 {
+        return values.to_vec();
+    }
+    values.iter().map(|v| v / sum).collect()
+}
+
+pub fn normalize_l2(values: &[f64]) -> Vec<f64> {
+    let norm: f64 = values.iter().map(|v| v * v).sum::<f64>().sqrt();
+    if norm == 0.0 {
+        return values.to_vec();
+    }
+    values.iter().map(|v| v / norm).collect()
+}
