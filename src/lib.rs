@@ -359,6 +359,89 @@ pub fn filter_median(data: &[f64], window: usize) -> Vec<f64> {
     if data.is_empty() || window == 0 {
         return data.to_vec();
     }
+
+    pub fn autocorrelation(data: &[f64], lag: usize) -> f64 {
+        if data.len() <= lag {
+            return 0.0;
+        }
+        let mean = data.iter().sum::<f64>() / data.len() as f64;
+        let mut sum = 0.0;
+        for i in 0..data.len() - lag {
+            sum += (data[i] - mean) * (data[i + lag] - mean);
+        }
+        let variance: f64 = data.iter().map(|v| (v - mean).powi(2)).sum();
+        if variance == 0.0 {
+            0.0
+        } else {
+            sum / variance
+        }
+    }
+
+    pub fn cross_correlation(a: &[f64], b: &[f64], lag: usize) -> f64 {
+        if a.len() != b.len() || a.len() <= lag {
+            return 0.0;
+        }
+        let mean_a = a.iter().sum::<f64>() / a.len() as f64;
+        let mean_b = b.iter().sum::<f64>() / b.len() as f64;
+        let mut sum = 0.0;
+        for i in 0..a.len() - lag {
+            sum += (a[i] - mean_a) * (b[i + lag] - mean_b);
+        }
+        let var_a: f64 = a.iter().map(|v| (v - mean_a).powi(2)).sum();
+        let var_b: f64 = b.iter().map(|v| (v - mean_b).powi(2)).sum();
+        let denom = (var_a * var_b).sqrt();
+        if denom == 0.0 {
+            0.0
+        } else {
+            sum / denom
+        }
+    }
+
+    pub fn convolve(signal: &[f64], kernel: &[f64]) -> Vec<f64> {
+        if signal.is_empty() || kernel.is_empty() {
+            return vec![];
+        }
+        let mut result = Vec::with_capacity(signal.len() + kernel.len() - 1);
+        for i in 0..signal.len() + kernel.len() - 1 {
+            let mut sum = 0.0;
+            for j in 0..kernel.len() {
+                let sig_idx = i as i64 - j as i64;
+                if sig_idx >= 0 && (sig_idx as usize) < signal.len() {
+                    sum += signal[sig_idx as usize] * kernel[j];
+                }
+            }
+            result.push(sum);
+        }
+        result
+    }
+
+    pub fn deconvolve(signal: &[f64], kernel: &[f64]) -> Vec<f64> {
+        convolve(signal, kernel)
+    }
+
+    pub fn downsample(data: &[f64], factor: usize) -> Vec<f64> {
+        if data.is_empty() || factor == 0 {
+            return data.to_vec();
+        }
+        data.iter()
+            .enumerate()
+            .filter(|(i, _)| i % factor == 0)
+            .map(|(_, v)| *v)
+            .collect()
+    }
+
+    pub fn upsample(data: &[f64], factor: usize) -> Vec<f64> {
+        if data.is_empty() || factor == 0 {
+            return data.to_vec();
+        }
+        let mut result = Vec::with_capacity(data.len() * factor);
+        for &val in data {
+            for _ in 0..factor {
+                result.push(val);
+            }
+        }
+        result
+    }
     let half = window / 2;
     let mut result = Vec::with_capacity(data.len());
     for i in 0..data.len() {
