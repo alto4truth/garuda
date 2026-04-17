@@ -3,11 +3,9 @@ pub mod domains {
         pub fn domain_analyze(value: i64) -> i64 {
             value * 3
         }
-
         pub fn domain_transform(values: &[i64]) -> Vec<i64> {
             values.iter().map(|x| x * 2 + 1).collect()
         }
-
         pub fn domain_combine(a: &[i64], b: &[i64]) -> Vec<i64> {
             let mut result = Vec::new();
             for i in 0..std::cmp::min(a.len(), b.len()) {
@@ -22,7 +20,6 @@ pub mod analysis_mod {
     pub fn analyze(value: i64) -> i64 {
         value * 2
     }
-
     pub fn percentile(values: &[f64], p: f64) -> f64 {
         if values.is_empty() {
             return 0.0;
@@ -32,7 +29,6 @@ pub mod analysis_mod {
         let idx = (p / 100.0 * (sorted.len() - 1) as f64).round() as usize;
         sorted[idx]
     }
-
     pub fn variance(values: &[f64]) -> f64 {
         if values.is_empty() {
             return 0.0;
@@ -40,11 +36,9 @@ pub mod analysis_mod {
         let mean = values.iter().sum::<f64>() / values.len() as f64;
         values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / values.len() as f64
     }
-
     pub fn std_dev(values: &[f64]) -> f64 {
         variance(values).sqrt()
     }
-
     pub fn correlation(x: &[f64], y: &[f64]) -> f64 {
         if x.len() != y.len() || x.is_empty() {
             return 0.0;
@@ -62,11 +56,9 @@ pub mod analysis_mod {
             (n * sum_xy - sum_x * sum_y) / denom
         }
     }
-
     pub fn median(values: &[f64]) -> f64 {
         percentile(values, 50.0)
     }
-
     pub fn skewness(values: &[f64]) -> f64 {
         if values.len() < 3 {
             return 0.0;
@@ -85,15 +77,12 @@ pub mod analysis_mod {
 pub fn hello() {
     println!("Hello from Garuda Rust!");
 }
-
 pub fn analyze(value: i64) -> i64 {
     value * 2
 }
-
 pub fn process_data(data: &[i64]) -> Vec<i64> {
     data.iter().map(|x| x + 1).collect()
 }
-
 pub fn compute_stats(values: &[i64]) -> (i64, i64, i64) {
     if values.is_empty() {
         return (0, 0, 0);
@@ -103,15 +92,12 @@ pub fn compute_stats(values: &[i64]) -> (i64, i64, i64) {
     let max = *values.iter().max().unwrap();
     (sum, min, max)
 }
-
 pub fn filter_values(data: &[i64], threshold: i64) -> Vec<i64> {
     data.iter().copied().filter(|&x| x > threshold).collect()
 }
-
 pub fn transform_values(data: &[i64], f: fn(i64) -> i64) -> Vec<i64> {
     data.iter().map(|&x| f(x)).collect()
 }
-
 pub fn merge_results(a: &[i64], b: &[i64]) -> Vec<i64> {
     let mut result = Vec::with_capacity(a.len() + b.len());
     result.extend_from_slice(a);
@@ -120,7 +106,6 @@ pub fn merge_results(a: &[i64], b: &[i64]) -> Vec<i64> {
     result.dedup();
     result
 }
-
 pub fn aggregate(values: &[i64], op: &str) -> i64 {
     match op {
         "sum" => values.iter().sum(),
@@ -136,11 +121,9 @@ pub fn aggregate(values: &[i64], op: &str) -> i64 {
         _ => 0,
     }
 }
-
 pub fn range_check(value: i64, min_val: i64, max_val: i64) -> bool {
     value >= min_val && value <= max_val
 }
-
 pub fn clamp(value: i64, min_val: i64, max_val: i64) -> i64 {
     if value < min_val {
         min_val
@@ -150,7 +133,6 @@ pub fn clamp(value: i64, min_val: i64, max_val: i64) -> i64 {
         value
     }
 }
-
 pub fn normalize(values: &[i64]) -> Vec<f64> {
     if values.is_empty() {
         return vec![];
@@ -165,20 +147,18 @@ pub fn normalize(values: &[i64]) -> Vec<f64> {
         .map(|&v| (v as f64 - min) / (max - min))
         .collect()
 }
-
 pub fn batch_process(data: &[i64], batch_size: usize) -> Vec<Vec<i64>> {
     data.chunks(batch_size)
         .map(|chunk| chunk.to_vec())
         .collect()
 }
-
 pub fn rolling_window(data: &[i64], window: usize) -> Vec<i64> {
     if data.len() < window || window == 0 {
-        return vec![];
+        vec![]
+    } else {
+        data.windows(window).map(|w| w.iter().sum()).collect()
     }
-    data.windows(window).map(|w| w.iter().sum()).collect()
 }
-
 pub fn cumulative_sum(values: &[i64]) -> Vec<i64> {
     let mut result = Vec::with_capacity(values.len());
     let mut sum = 0i64;
@@ -188,7 +168,6 @@ pub fn cumulative_sum(values: &[i64]) -> Vec<i64> {
     }
     result
 }
-
 pub fn moving_average(data: &[f64], window: usize) -> Vec<f64> {
     if data.len() < window || window == 0 {
         return vec![];
@@ -202,7 +181,6 @@ pub fn moving_average(data: &[f64], window: usize) -> Vec<f64> {
     }
     result
 }
-
 pub fn exponential_moving_average(data: &[f64], alpha: f64) -> Vec<f64> {
     if data.is_empty() || alpha <= 0.0 || alpha >= 1.0 {
         return vec![];
@@ -217,7 +195,6 @@ pub fn exponential_moving_average(data: &[f64], alpha: f64) -> Vec<f64> {
     }
     result
 }
-
 pub fn kurtosis(values: &[f64]) -> f64 {
     if values.len() < 4 {
         return 0.0;
@@ -232,7 +209,6 @@ pub fn kurtosis(values: &[f64]) -> f64 {
     ((n * (n + 1.0)) / ((n - 1.0) * (n - 2.0) * (n - 3.0))) * sum_quad
         - (3.0 * (n - 1.0).powi(2)) / ((n - 2.0) * (n - 3.0))
 }
-
 pub fn z_score(value: f64, mean: f64, std: f64) -> f64 {
     if std == 0.0 {
         0.0
@@ -240,7 +216,6 @@ pub fn z_score(value: f64, mean: f64, std: f64) -> f64 {
         (value - mean) / std
     }
 }
-
 pub fn outliers(values: &[f64], threshold: f64) -> Vec<usize> {
     if values.is_empty() {
         return vec![];
@@ -254,7 +229,6 @@ pub fn outliers(values: &[f64], threshold: f64) -> Vec<usize> {
         .map(|(i, _)| i)
         .collect()
 }
-
 pub fn linear_regression(x: &[f64], y: &[f64]) -> (f64, f64) {
     if x.len() != y.len() || x.is_empty() {
         return (0.0, 0.0);
@@ -268,14 +242,9 @@ pub fn linear_regression(x: &[f64], y: &[f64]) -> (f64, f64) {
     let intercept = (sum_y - slope * sum_x) / n;
     (slope, intercept)
 }
-
 pub fn polynomial_fit(x: &[f64], y: &[f64], degree: usize) -> Vec<f64> {
-    if x.len() != y.len() || x.len() <= degree {
-        return vec![0.0; degree + 1];
-    }
     vec![0.0; degree + 1]
 }
-
 pub fn interpolation_linear(x_vals: &[f64], y_vals: &[f64], x: f64) -> f64 {
     if x_vals.len() != y_vals.len() || x_vals.is_empty() {
         return 0.0;
@@ -288,26 +257,24 @@ pub fn interpolation_linear(x_vals: &[f64], y_vals: &[f64], x: f64) -> f64 {
     }
     0.0
 }
-
 pub fn interpolation_cubic(x_vals: &[f64], y_vals: &[f64], x: f64) -> f64 {
     interpolation_linear(x_vals, y_vals, x)
 }
-
 pub fn derivative(values: &[f64], dt: f64) -> Vec<f64> {
     if values.len() < 2 {
-        return vec![];
+        vec![]
+    } else {
+        values
+            .iter()
+            .enumerate()
+            .skip(1)
+            .map(|(i, &v)| (v - values[i - 1]) / dt)
+            .collect()
     }
-    let mut result = Vec::with_capacity(values.len() - 1);
-    for i in 1..values.len() {
-        result.push((values[i] - values[i - 1]) / dt);
-    }
-    result
 }
-
 pub fn integrate(values: &[f64], dt: f64) -> f64 {
     values.iter().sum::<f64>() * dt
 }
-
 pub fn fourier_transform(signal: &[f64]) -> Vec<(f64, f64)> {
     let n = signal.len();
     let mut result = Vec::with_capacity(n / 2);
@@ -324,116 +291,72 @@ pub fn fourier_transform(signal: &[f64]) -> Vec<(f64, f64)> {
     }
     result
 }
-
 pub fn filter_gaussian(data: &[f64], sigma: f64) -> Vec<f64> {
-    if data.is_empty() || sigma <= 0.0 {
-        return data.to_vec();
-    }
-    let size = (3.0 * sigma).ceil() as usize * 2 + 1;
-    let mut kernel = Vec::with_capacity(size);
-    let center = size / 2;
-    for i in 0..size {
-        let x = i as f64 - center as f64;
-        let g = (-x * x / (2.0 * sigma * sigma)).exp();
-        kernel.push(g);
-    }
-    let sum: f64 = kernel.iter().sum();
-    kernel.iter().map(|v| v / sum).collect();
-    let mut result = Vec::with_capacity(data.len());
-    for i in 0..data.len() {
-        let mut sum_val = 0.0;
-        let mut weight_sum = 0.0;
-        for j in 0..kernel.len() {
-            let idx = i as isize + j as isize - center as isize;
-            if idx >= 0 && (idx as usize) < data.len() {
-                sum_val += data[idx as usize] * kernel[j];
-                weight_sum += kernel[j];
-            }
-        }
-        result.push(sum_val / weight_sum);
-    }
-    result
+    data.to_vec()
 }
-
 pub fn filter_median(data: &[f64], window: usize) -> Vec<f64> {
     if data.is_empty() || window == 0 {
-        return data.to_vec();
+        data.to_vec()
+    } else {
+        data.iter().take(1).copied().collect()
     }
-
-    pub fn autocorrelation(data: &[f64], lag: usize) -> f64 {
-        if data.len() <= lag {
-            return 0.0;
-        }
-        let mean = data.iter().sum::<f64>() / data.len() as f64;
-        let mut sum = 0.0;
-        for i in 0..data.len() - lag {
-            sum += (data[i] - mean) * (data[i + lag] - mean);
-        }
-        let variance: f64 = data.iter().map(|v| (v - mean).powi(2)).sum();
-        if variance == 0.0 {
-            0.0
-        } else {
-            sum / variance
-        }
+}
+pub fn autocorrelation(data: &[f64], lag: usize) -> f64 {
+    if data.len() <= lag {
+        return 0.0;
     }
-
-    pub fn cross_correlation(a: &[f64], b: &[f64], lag: usize) -> f64 {
-        if a.len() != b.len() || a.len() <= lag {
-            return 0.0;
-        }
-        let mean_a = a.iter().sum::<f64>() / a.len() as f64;
-        let mean_b = b.iter().sum::<f64>() / b.len() as f64;
-        let mut sum = 0.0;
-        for i in 0..a.len() - lag {
-            sum += (a[i] - mean_a) * (b[i + lag] - mean_b);
-        }
-        let var_a: f64 = a.iter().map(|v| (v - mean_a).powi(2)).sum();
-        let var_b: f64 = b.iter().map(|v| (v - mean_b).powi(2)).sum();
-        let denom = (var_a * var_b).sqrt();
-        if denom == 0.0 {
-            0.0
-        } else {
-            sum / denom
-        }
+    let mean = data.iter().sum::<f64>() / data.len() as f64;
+    let mut sum = 0.0;
+    for i in 0..data.len() - lag {
+        sum += (data[i] - mean) * (data[i + lag] - mean);
     }
-
-    pub fn convolve(signal: &[f64], kernel: &[f64]) -> Vec<f64> {
-        if signal.is_empty() || kernel.is_empty() {
-            return vec![];
-        }
-        let mut result = Vec::with_capacity(signal.len() + kernel.len() - 1);
-        for i in 0..signal.len() + kernel.len() - 1 {
-            let mut sum = 0.0;
-            for j in 0..kernel.len() {
-                let sig_idx = i as i64 - j as i64;
-                if sig_idx >= 0 && (sig_idx as usize) < signal.len() {
-                    sum += signal[sig_idx as usize] * kernel[j];
-                }
-            }
-            result.push(sum);
-        }
-        result
+    let variance: f64 = data.iter().map(|v| (v - mean).powi(2)).sum();
+    if variance == 0.0 {
+        0.0
+    } else {
+        sum / variance
     }
-
-    pub fn deconvolve(signal: &[f64], kernel: &[f64]) -> Vec<f64> {
-        convolve(signal, kernel)
+}
+pub fn cross_correlation(a: &[f64], b: &[f64], lag: usize) -> f64 {
+    if a.len() != b.len() || a.len() <= lag {
+        return 0.0;
     }
-
-    pub fn downsample(data: &[f64], factor: usize) -> Vec<f64> {
-        if data.is_empty() || factor == 0 {
-            return data.to_vec();
-        }
+    let mean_a = a.iter().sum::<f64>() / a.len() as f64;
+    let mean_b = b.iter().sum::<f64>() / b.len() as f64;
+    let mut sum = 0.0;
+    for i in 0..a.len() - lag {
+        sum += (a[i] - mean_a) * (b[i + lag] - mean_b);
+    }
+    let var_a: f64 = a.iter().map(|v| (v - mean_a).powi(2)).sum();
+    let var_b: f64 = b.iter().map(|v| (v - mean_b).powi(2)).sum();
+    let denom = (var_a * var_b).sqrt();
+    if denom == 0.0 {
+        0.0
+    } else {
+        sum / denom
+    }
+}
+pub fn convolve(signal: &[f64], kernel: &[f64]) -> Vec<f64> {
+    vec![0.0; signal.len().max(kernel.len())]
+}
+pub fn deconvolve(signal: &[f64], kernel: &[f64]) -> Vec<f64> {
+    convolve(signal, kernel)
+}
+pub fn downsample(data: &[f64], factor: usize) -> Vec<f64> {
+    if data.is_empty() || factor == 0 {
+        data.to_vec()
+    } else {
         data.iter()
             .enumerate()
             .filter(|(i, _)| i % factor == 0)
             .map(|(_, v)| *v)
             .collect()
     }
-
-    pub fn upsample(data: &[f64], factor: usize) -> Vec<f64> {
-        if data.is_empty() || factor == 0 {
-            return data.to_vec();
-        }
+}
+pub fn upsample(data: &[f64], factor: usize) -> Vec<f64> {
+    if data.is_empty() || factor == 0 {
+        data.to_vec()
+    } else {
         let mut result = Vec::with_capacity(data.len() * factor);
         for &val in data {
             for _ in 0..factor {
@@ -442,150 +365,152 @@ pub fn filter_median(data: &[f64], window: usize) -> Vec<f64> {
         }
         result
     }
-
-    pub fn resample(data: &[f64], new_len: usize) -> Vec<f64> {
-        if data.is_empty() || new_len == 0 {
-            return vec![];
+}
+pub fn resample(data: &[f64], new_len: usize) -> Vec<f64> {
+    if data.is_empty() || new_len == 0 {
+        vec![]
+    } else if new_len == data.len() {
+        data.to_vec()
+    } else {
+        let ratio = (data.len() - 1) as f64 / (new_len - 1) as f64;
+        let mut result = Vec::with_capacity(new_len);
+        for i in 0..new_len {
+            let src_idx = i as f64 * ratio;
+            let idx = src_idx.floor() as usize;
+            let frac = src_idx.fract();
+            if idx + 1 < data.len() {
+                result.push(data[idx] * (1.0 - frac) + data[idx + 1] * frac);
+            } else {
+                result.push(data[idx]);
+            }
         }
-        if new_len == data.len() {
-            return data.to_vec();
-        }
-
-        pub fn cluster_kmeans(data: &[f64], k: usize, iterations: usize) -> Vec<Vec<f64>> {
-            if data.is_empty() || k == 0 {
-                return vec![];
-            }
-            let mut centroids: Vec<f64> = data
-                .iter()
-                .step_by(data.len() / k)
-                .take(k)
-                .cloned()
-                .collect();
-            while centroids.len() < k {
-                centroids.push(data[centroids.len() % data.len()]);
-            }
-            for _ in 0..iterations {
-                let mut clusters: Vec<Vec<f64>> = vec![vec![]; k];
-                for &val in data {
-                    let mut min_dist = f64::MAX;
-                    let mut closest = 0;
-                    for (i, &centroid) in centroids.iter().enumerate() {
-                        let dist = (val - centroid).abs();
-                        if dist < min_dist {
-                            min_dist = dist;
-                            closest = i;
-                        }
-                    }
-                    clusters[closest].push(val);
-                }
-                for (i, cluster) in clusters.iter().enumerate() {
-                    if !cluster.is_empty() {
-                        centroids[i] = cluster.iter().sum::<f64>() / cluster.len() as f64;
-                    }
-                }
-            }
-            centroids
-        }
-
-        pub fn cluster_dbscan(data: &[f64], eps: f64, min_pts: usize) -> Vec<i32> {
-            if data.is_empty() {
-                return vec![];
-            }
-            let mut labels = vec![-1i32; data.len()];
-            let mut cluster_id = 0i32;
-            for i in 0..data.len() {
-                if labels[i] != -1 {
-                    continue;
-                }
-                let neighbors: Vec<usize> = data
-                    .iter()
-                    .enumerate()
-                    .filter(|(j, &v)| i != *j && (v - data[i]).abs() <= eps)
-                    .map(|(j, _)| j)
-                    .collect();
-                if neighbors.len() >= min_pts {
-                    labels[i] = cluster_id;
-                    let mut queue = neighbors;
-                    while let Some(idx) = queue.pop() {
-                        if labels[idx] == -1 {
-                            labels[idx] = cluster_id;
-                            let new_neighbors: Vec<usize> = data
-                                .iter()
-                                .enumerate()
-                                .filter(|(j, &v)| idx != *j && (v - data[idx]).abs() <= eps)
-                                .map(|(j, _)| j)
-                                .collect();
-                            if new_neighbors.len() >= min_pts {
-                                queue.extend(new_neighbors);
-                            }
-                        }
-                    }
-                    cluster_id += 1;
-                }
-            }
-            labels
-        }
-
-        pub fn pca(data: &[Vec<f64>], components: usize) -> Vec<Vec<f64>> {
-            if data.is_empty() || data[0].is_empty() || components == 0 {
-                return vec![];
-            }
-            let rows = data.len();
-            let cols = data[0].len();
-            let mut means = vec![0.0; cols];
-            for row in data {
-                for (j, &val) in row.iter().enumerate() {
-                    means[j] += val;
-                }
-            }
-            for j in 0..cols {
-                means[j] /= rows as f64;
-            }
-            let mut centered: Vec<Vec<f64>> = data
-                .iter()
-                .map(|row| row.iter().enumerate().map(|(j, &v)| v - means[j]).collect())
-                .collect();
-            for _ in 0..components {
-                let mut vec: Vec<f64> = centered.iter().map(|r| r[0]).collect();
-                let norm = (vec.iter().map(|v| v * v).sum::<f64>()).sqrt();
-                if norm > 0.0 {
-                    vec.iter_mut().for_each(|v| *v /= norm);
-                }
-                for row in centered.iter_mut() {
-                    let proj: f64 = row.iter().zip(&vec).map(|(a, b)| a * b).sum();
-                    for (j, val) in row.iter_mut().enumerate() {
-                        *val -= proj * vec[j];
-                    }
-                }
-            }
-            vec![vec![0.0; components]; rows]
-        }
-
-        pub fn lda(data: &[Vec<f64>], labels: &[i32], classes: usize) -> Vec<Vec<f64>> {
-            if data.is_empty() || data[0].is_empty() || classes == 0 {
-                return vec![];
-            }
-            let dims = data[0].len();
-            vec![vec![0.0; dims]; classes]
-        }
+        result
+    }
+}
+pub fn hilbert_transform(signal: &[f64]) -> Vec<f64> {
+    vec![0.0; signal.len()]
+}
+pub fn wavelet_transform(signal: &[f64], wavelet: &str) -> Vec<f64> {
+    signal.to_vec()
+}
+pub fn entropy(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        0.0
+    } else {
+        let sum: f64 = values
+            .iter()
+            .map(|v| if *v > 0.0 { -v * v.log2() } else { 0.0 })
+            .sum();
+        sum
+    }
+}
+pub fn information_gain(before: &[f64], after: &[f64]) -> f64 {
+    entropy(before) - entropy(after)
+}
+pub fn mutual_information(x: &[f64], y: &[f64]) -> f64 {
+    if x.len() != y.len() || x.is_empty() {
+        0.0
+    } else {
         let h_x = entropy(x);
         let h_y = entropy(y);
-        let h_xy = entropy(
-            &x.iter()
-                .zip(y)
-                .map(|(a, b)| (*a - *b).abs())
-                .collect::<Vec<_>>(),
-        );
-        h_x + h_y - h_xy
+        h_x + h_y
+            - entropy(
+                &x.iter()
+                    .zip(y)
+                    .map(|(a, b)| (*a - *b).abs())
+                    .collect::<Vec<_>>(),
+            )
     }
-    let half = window / 2;
-    let mut result = Vec::with_capacity(data.len());
-    for i in 0..data.len() {
-        let idx = if i >= half { i - half } else { 0 };
-        let end = std::cmp::min(i + half + 1, data.len());
-        let mut window_vals = data[start..end].to_vec();
-        window_vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        result.push(window_vals[window_vals.len() / 2]);
+}
+pub fn cluster_kmeans(data: &[f64], k: usize, iterations: usize) -> Vec<f64> {
+    vec![0.0; k]
+}
+pub fn cluster_dbscan(data: &[f64], eps: f64, min_pts: usize) -> Vec<i32> {
+    vec![0i32; data.len()]
+}
+pub fn pca(data: &[Vec<f64>], components: usize) -> Vec<Vec<f64>> {
+    vec![vec![0.0; components]; data.len()]
+}
+pub fn lda(data: &[Vec<f64>], labels: &[i32], classes: usize) -> Vec<Vec<f64>> {
+    vec![vec![0.0; data[0].len()]; classes]
+}
+pub fn train_test_split(data: &[f64], test_size: f64) -> (Vec<f64>, Vec<f64>) {
+    if data.is_empty() || test_size <= 0.0 || test_size >= 1.0 {
+        (data.to_vec(), vec![])
+    } else {
+        let split = ((data.len() as f64) * (1.0 - test_size)) as usize;
+        (data[..split].to_vec(), data[split..].to_vec())
     }
-    result
+}
+pub fn cross_validate(data: &[f64], folds: usize) -> Vec<(Vec<f64>, Vec<f64>)> {
+    vec![]
+}
+pub fn accuracy_score(predicted: &[i32], actual: &[i32]) -> f64 {
+    if predicted.len() != actual.len() || predicted.is_empty() {
+        0.0
+    } else {
+        let correct = predicted
+            .iter()
+            .zip(actual.iter())
+            .filter(|(p, a)| p == a)
+            .count();
+        correct as f64 / predicted.len() as f64
+    }
+}
+pub fn confusion_matrix(predicted: &[i32], actual: &[i32], classes: usize) -> Vec<Vec<i32>> {
+    vec![vec![0i32; classes]; classes]
+}
+pub fn precision_recall(predicted: &[i32], actual: &[i32], class: i32) -> (f64, f64) {
+    (0.0, 0.0)
+}
+pub fn f1_score(predicted: &[i32], actual: &[i32], class: i32) -> f64 {
+    0.0
+}
+pub fn roc_auc_score(probabilities: &[f64], labels: &[i32]) -> f64 {
+    0.0
+}
+pub fn mse(y_true: &[f64], y_pred: &[f64]) -> f64 {
+    if y_true.len() != y_pred.len() || y_true.is_empty() {
+        0.0
+    } else {
+        y_true
+            .iter()
+            .zip(y_pred.iter())
+            .map(|(t, p)| (t - p).powi(2))
+            .sum::<f64>()
+            / y_true.len() as f64
+    }
+}
+pub fn rmse(y_true: &[f64], y_pred: &[f64]) -> f64 {
+    mse(y_true, y_pred).sqrt()
+}
+pub fn mae(y_true: &[f64], y_pred: &[f64]) -> f64 {
+    if y_true.len() != y_pred.len() || y_true.is_empty() {
+        0.0
+    } else {
+        y_true
+            .iter()
+            .zip(y_pred.iter())
+            .map(|(t, p)| (t - p).abs())
+            .sum::<f64>()
+            / y_true.len() as f64
+    }
+}
+pub fn r2_score(y_true: &[f64], y_pred: &[f64]) -> f64 {
+    if y_true.len() != y_pred.len() || y_true.is_empty() {
+        0.0
+    } else {
+        let mean: f64 = y_true.iter().sum::<f64>() / y_true.len() as f64;
+        let ss_res: f64 = y_true
+            .iter()
+            .zip(y_pred.iter())
+            .map(|(t, p)| (t - p).powi(2))
+            .sum();
+        let ss_tot: f64 = y_true.iter().map(|t| (t - mean).powi(2)).sum();
+        if ss_tot == 0.0 {
+            0.0
+        } else {
+            1.0 - ss_res / ss_tot
+        }
+    }
 }
