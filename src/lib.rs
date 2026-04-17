@@ -62,6 +62,24 @@ pub mod analysis_mod {
             (n * sum_xy - sum_x * sum_y) / denom
         }
     }
+
+    pub fn median(values: &[f64]) -> f64 {
+        percentile(values, 50.0)
+    }
+
+    pub fn skewness(values: &[f64]) -> f64 {
+        if values.len() < 3 {
+            return 0.0;
+        }
+        let mean = values.iter().sum::<f64>() / values.len() as f64;
+        let std = std_dev(values);
+        if std == 0.0 {
+            return 0.0;
+        }
+        let n = values.len() as f64;
+        let sum_cubed: f64 = values.iter().map(|v| ((v - mean) / std).powi(3)).sum();
+        (n / ((n - 1.0) * (n - 2.0))) * sum_cubed
+    }
 }
 
 pub fn hello() {
