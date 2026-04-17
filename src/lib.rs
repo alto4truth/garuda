@@ -621,69 +621,462 @@ pub fn normalize_l1(values: &[f64]) -> Vec<f64> {
 
 pub fn normalize_l2(values: &[f64]) -> Vec<f64> {
     let norm: f64 = values.iter().map(|v| v * v).sum::<f64>().sqrt();
-    if norm == 0.0 { return values.to_vec(); }
+    if norm == 0.0 {
+        return values.to_vec();
+    }
     values.iter().map(|v| v / norm).collect()
 }
 
-pub fn one_hot_encode(index: usize, size: usize) -> Vec<f64> { let mut result = vec![0.0; size]; if index < size { result[index] = 1.0; } result }
-pub fn argmax(values: &[f64]) -> usize { values.iter().enumerate().max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap()).map(|(i, _)| i).unwrap_or(0) }
-pub fn argmin(values: &[f64]) -> usize { values.iter().enumerate().min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap()).map(|(i, _)| i).unwrap_or(0) }
-pub fn top_k(values: &[f64], k: usize) -> Vec<(usize, f64)> { let mut indexed: Vec<_> = values.iter().enumerate().map(|(i, &v)| (i, v)).collect(); indexed.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap()); indexed.into_iter().take(k).collect() }
-pub fn softmax_cross_entropy(probs: &[f64], target: usize) -> f64 { let log_prob = if target < probs.len() { -probs[target].ln() } else { 0.0 }; log_prob }
-pub fn binary_cross_entropy(pred: f64, target: f64) -> f64 { let eps = 1e-15; let p = pred.max(eps).min(1.0 - eps); -target * p.ln() - (1.0 - target) * (1.0 - p).ln() }
-pub fn categorical_cross_entropy(probs: &[f64], target: &[f64]) -> f64 { probs.iter().zip(target.iter()).map(|(p, t)| if *t > 0.0 { -t * p.max(1e-15).ln() } else { 0.0 }).sum() }
-pub fn hinge_loss(pred: f64, target: i32) -> f64 { let y = target as f64; (0.0_f64).max(1.0 - y * pred) }
-pub fn mean_squared_error(pred: &[f64], target: &[f64]) -> f64 { if pred.len() != target.len() { 0.0 } else { pred.iter().zip(target.iter()).map(|(p, t)| (p - t).powi(2)).sum::<f64>() / pred.len() as f64 } }
-pub fn huber_loss(pred: f64, target: f64, delta: f64) -> f64 { let diff = (pred - target).abs(); if diff <= delta { diff * diff / 2.0 } else { delta * (diff - delta / 2.0) } }
-pub fn log_loss(pred: &[f64], target: &[i32]) -> f64 { pred.iter().zip(target.iter()).map(|(p, &t)| binary_cross_entropy(*p, t as f64)).sum::<f64>() / pred.len() as f64 }
+pub fn one_hot_encode(index: usize, size: usize) -> Vec<f64> {
+    let mut result = vec![0.0; size];
+    if index < size {
+        result[index] = 1.0;
+    }
+    result
+}
+pub fn argmax(values: &[f64]) -> usize {
+    values
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+        .map(|(i, _)| i)
+        .unwrap_or(0)
+}
+pub fn argmin(values: &[f64]) -> usize {
+    values
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+        .map(|(i, _)| i)
+        .unwrap_or(0)
+}
+pub fn top_k(values: &[f64], k: usize) -> Vec<(usize, f64)> {
+    let mut indexed: Vec<_> = values.iter().enumerate().map(|(i, &v)| (i, v)).collect();
+    indexed.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
+    indexed.into_iter().take(k).collect()
+}
+pub fn softmax_cross_entropy(probs: &[f64], target: usize) -> f64 {
+    let log_prob = if target < probs.len() {
+        -probs[target].ln()
+    } else {
+        0.0
+    };
+    log_prob
+}
+pub fn binary_cross_entropy(pred: f64, target: f64) -> f64 {
+    let eps = 1e-15;
+    let p = pred.max(eps).min(1.0 - eps);
+    -target * p.ln() - (1.0 - target) * (1.0 - p).ln()
+}
+pub fn categorical_cross_entropy(probs: &[f64], target: &[f64]) -> f64 {
+    probs
+        .iter()
+        .zip(target.iter())
+        .map(|(p, t)| {
+            if *t > 0.0 {
+                -t * p.max(1e-15).ln()
+            } else {
+                0.0
+            }
+        })
+        .sum()
+}
+pub fn hinge_loss(pred: f64, target: i32) -> f64 {
+    let y = target as f64;
+    (0.0_f64).max(1.0 - y * pred)
+}
+pub fn mean_squared_error(pred: &[f64], target: &[f64]) -> f64 {
+    if pred.len() != target.len() {
+        0.0
+    } else {
+        pred.iter()
+            .zip(target.iter())
+            .map(|(p, t)| (p - t).powi(2))
+            .sum::<f64>()
+            / pred.len() as f64
+    }
+}
+pub fn huber_loss(pred: f64, target: f64, delta: f64) -> f64 {
+    let diff = (pred - target).abs();
+    if diff <= delta {
+        diff * diff / 2.0
+    } else {
+        delta * (diff - delta / 2.0)
+    }
+}
+pub fn log_loss(pred: &[f64], target: &[i32]) -> f64 {
+    pred.iter()
+        .zip(target.iter())
+        .map(|(p, &t)| binary_cross_entropy(*p, t as f64))
+        .sum::<f64>()
+        / pred.len() as f64
+}
 
 pub fn matrix_multiply(a: &[Vec<f64>], b: &[Vec<f64>]) -> Vec<Vec<f64>> {
-    if a.is_empty() || b.is_empty() || a[0].len() != b.len() { return vec![]; }
-    let rows = a.len(); let cols = b[0].len(); let inner = b.len();
+    if a.is_empty() || b.is_empty() || a[0].len() != b.len() {
+        return vec![];
+    }
+    let rows = a.len();
+    let cols = b[0].len();
+    let inner = b.len();
     let mut result = vec![vec![0.0; cols]; rows];
-    for i in 0..rows { for j in 0..cols { for k in 0..inner { result[i][j] += a[i][k] * b[k][j]; } } }
+    for i in 0..rows {
+        for j in 0..cols {
+            for k in 0..inner {
+                result[i][j] += a[i][k] * b[k][j];
+            }
+        }
+    }
     result
 }
 
-pub fn matrix_transpose(m: &[Vec<f64>]) -> Vec<Vec<f64>> { if m.is_empty() { vec![] } else { (0..m[0].len()).map(|j| m.iter().map(|row| row[j]).collect()).collect() } }
-pub fn matrix_add(a: &[Vec<f64>], b: &[Vec<f64>]) -> Vec<Vec<f64>> { a.iter().zip(b.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(x, y)| x + y).collect()).collect() }
-pub fn matrix_subtract(a: &[Vec<f64>], b: &[Vec<f64>]) -> Vec<Vec<f64>> { a.iter().zip(b.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(x, y)| x - y).collect()).collect() }
-pub fn matrix_scale(m: &[Vec<f64>], scalar: f64) -> Vec<Vec<f64>> { m.iter().map(|row| row.iter().map(|v| v * scalar).collect()).collect() }
-pub fn matrix_identity(size: usize) -> Vec<Vec<f64>> { (0..size).map(|i| (0..size).map(|j| if i == j { 1.0 } else { 0.0 }).collect()).collect() }
-pub fn matrix_trace(m: &[Vec<f64>]) -> f64 { m.iter().enumerate().map(|(i, row)| row[i]).sum() }
+pub fn matrix_transpose(m: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    if m.is_empty() {
+        vec![]
+    } else {
+        (0..m[0].len())
+            .map(|j| m.iter().map(|row| row[j]).collect())
+            .collect()
+    }
+}
+pub fn matrix_add(a: &[Vec<f64>], b: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    a.iter()
+        .zip(b.iter())
+        .map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(x, y)| x + y).collect())
+        .collect()
+}
+pub fn matrix_subtract(a: &[Vec<f64>], b: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    a.iter()
+        .zip(b.iter())
+        .map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(x, y)| x - y).collect())
+        .collect()
+}
+pub fn matrix_scale(m: &[Vec<f64>], scalar: f64) -> Vec<Vec<f64>> {
+    m.iter()
+        .map(|row| row.iter().map(|v| v * scalar).collect())
+        .collect()
+}
+pub fn matrix_identity(size: usize) -> Vec<Vec<f64>> {
+    (0..size)
+        .map(|i| (0..size).map(|j| if i == j { 1.0 } else { 0.0 }).collect())
+        .collect()
+}
+pub fn matrix_trace(m: &[Vec<f64>]) -> f64 {
+    m.iter().enumerate().map(|(i, row)| row[i]).sum()
+}
 pub fn matrix_determinant(m: &[Vec<f64>]) -> f64 {
-    let n = m.len(); if n == 0 { return 0.0; } if n == 1 { return m[0][0]; } if n == 2 { return m[0][0] * m[1][1] - m[0][1] * m[1][0]; }
+    let n = m.len();
+    if n == 0 {
+        return 0.0;
+    }
+    if n == 1 {
+        return m[0][0];
+    }
+    if n == 2 {
+        return m[0][0] * m[1][1] - m[0][1] * m[1][0];
+    }
     let mut det = 0.0;
-    for j in 0..n { let mut sub = Vec::new(); for i in 1..n { let mut row = Vec::new(); for k in 0..n { if k != j { row.push(m[i][k]); } } sub.push(row); } det += m[0][j] * matrix_determinant(&sub) * (if j % 2 == 0 { 1.0 } else { -1.0 }); }
+    for j in 0..n {
+        let mut sub = Vec::new();
+        for i in 1..n {
+            let mut row = Vec::new();
+            for k in 0..n {
+                if k != j {
+                    row.push(m[i][k]);
+                }
+            }
+            sub.push(row);
+        }
+        det += m[0][j] * matrix_determinant(&sub) * (if j % 2 == 0 { 1.0 } else { -1.0 });
+    }
     det
 }
 
 pub fn matrix_inverse(m: &[Vec<f64>]) -> Vec<Vec<f64>> {
-    let n = m.len(); if n == 0 { return vec![]; }
-    let det = matrix_determinant(m); if det.abs() < 1e-10 { return vec![]; }
-    if n == 1 { return vec![vec![1.0 / m[0][0]]]; }
+    let n = m.len();
+    if n == 0 {
+        return vec![];
+    }
+    let det = matrix_determinant(m);
+    if det.abs() < 1e-10 {
+        return vec![];
+    }
+    if n == 1 {
+        return vec![vec![1.0 / m[0][0]]];
+    }
     let mut adj = vec![vec![0.0; n]; n];
-    for i in 0..n { for j in 0..n { let mut sub = Vec::new(); for r in 0..n { if r != i { let mut row = Vec::new(); for c in 0..n { if c != j { row.push(m[r][c]); } } sub.push(row); } } adj[j][i] = matrix_determinant(&sub) * (if (i + j) % 2 == 0 { 1.0 } else { -1.0 }); } }
+    for i in 0..n {
+        for j in 0..n {
+            let mut sub = Vec::new();
+            for r in 0..n {
+                if r != i {
+                    let mut row = Vec::new();
+                    for c in 0..n {
+                        if c != j {
+                            row.push(m[r][c]);
+                        }
+                    }
+                    sub.push(row);
+                }
+            }
+            adj[j][i] = matrix_determinant(&sub) * (if (i + j) % 2 == 0 { 1.0 } else { -1.0 });
+        }
+    }
     matrix_scale(&adj, 1.0 / det)
 }
 
-pub fn matrix_dot(a: &[f64], b: &[f64]) -> f64 { a.iter().zip(b.iter()).map(|(x, y)| x * y).sum() }
-pub fn vector_magnitude(v: &[f64]) -> f64 { v.iter().map(|x| x * x).sum::<f64>().sqrt() }
-pub fn vector_normalize(v: &[f64]) -> Vec<f64> { let mag = vector_magnitude(v); if mag == 0.0 { v.to_vec() } else { v.iter().map(|x| x / mag).collect() } }
-pub fn vector_angle(a: &[f64], b: &[f64]) -> f64 { let dot = matrix_dot(a, b); let mag = vector_magnitude(a) * vector_magnitude(b); if mag == 0.0 { 0.0 } else { (dot / mag).acos() } }
-pub fn vector_project(a: &[f64], b: &[f64]) -> Vec<f64> { let dot = matrix_dot(a, b); let mag_sq = b.iter().map(|x| x * x).sum::<f64>(); if mag_sq == 0.0 { vec![0.0; a.len()] } else { b.iter().map(|x| x * dot / mag_sq).collect() } }
-pub fn vector_cross_3d(a: &[f64], b: &[f64]) -> Vec<f64> { if a.len() < 3 || b.len() < 3 { vec![0.0; 3] } else { vec![a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] } }
-pub fn vector_distance(a: &[f64], b: &[f64]) -> f64 { a.iter().zip(b.iter()).map(|(x, y)| (x - y).powi(2)).sum::<f64>().sqrt() }
-pub fn cosine_similarity(a: &[f64], b: &[f64]) -> f64 { let dot = matrix_dot(a, b); let mag = vector_magnitude(a) * vector_magnitude(b); if mag == 0.0 { 0.0 } else { dot / mag } }
+pub fn matrix_dot(a: &[f64], b: &[f64]) -> f64 {
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+}
+pub fn vector_magnitude(v: &[f64]) -> f64 {
+    v.iter().map(|x| x * x).sum::<f64>().sqrt()
+}
+pub fn vector_normalize(v: &[f64]) -> Vec<f64> {
+    let mag = vector_magnitude(v);
+    if mag == 0.0 {
+        v.to_vec()
+    } else {
+        v.iter().map(|x| x / mag).collect()
+    }
+}
+pub fn vector_angle(a: &[f64], b: &[f64]) -> f64 {
+    let dot = matrix_dot(a, b);
+    let mag = vector_magnitude(a) * vector_magnitude(b);
+    if mag == 0.0 {
+        0.0
+    } else {
+        (dot / mag).acos()
+    }
+}
+pub fn vector_project(a: &[f64], b: &[f64]) -> Vec<f64> {
+    let dot = matrix_dot(a, b);
+    let mag_sq = b.iter().map(|x| x * x).sum::<f64>();
+    if mag_sq == 0.0 {
+        vec![0.0; a.len()]
+    } else {
+        b.iter().map(|x| x * dot / mag_sq).collect()
+    }
+}
+pub fn vector_cross_3d(a: &[f64], b: &[f64]) -> Vec<f64> {
+    if a.len() < 3 || b.len() < 3 {
+        vec![0.0; 3]
+    } else {
+        vec![
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    }
+}
+pub fn vector_distance(a: &[f64], b: &[f64]) -> f64 {
+    a.iter()
+        .zip(b.iter())
+        .map(|(x, y)| (x - y).powi(2))
+        .sum::<f64>()
+        .sqrt()
+}
+pub fn cosine_similarity(a: &[f64], b: &[f64]) -> f64 {
+    let dot = matrix_dot(a, b);
+    let mag = vector_magnitude(a) * vector_magnitude(b);
+    if mag == 0.0 {
+        0.0
+    } else {
+        dot / mag
+    }
+}
 
-pub fn euclidean_distance(a: &[f64], b: &[f64]) -> f64 { vector_distance(a, b) }
-pub fn manhattan_distance(a: &[f64], b: &[f64]) -> f64 { a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).sum() }
-pub fn chebyshev_distance(a: &[f64], b: &[f64]) -> f64 { a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).fold(0.0_f64, |a, b| a.max(b)) }
-pub fn jaccard_similarity(a: &[f64], b: &[f64]) -> f64 { let min_sum: f64 = a.iter().zip(b.iter()).map(|(x, y)| x.min(*y)).sum(); let max_sum: f64 = a.iter().zip(b.iter()).map(|(x, y)| x.max(*y)).sum(); if max_sum == 0.0 { 0.0 } else { min_sum / max_sum } }
-pub fn levenshtein_distance(s1: &str, s2: &str) -> usize { let (m, n) = (s1.len(), s2.len()); if m == 0 { return n; } if n == 0 { return m; } let mut matrix = vec![vec![0usize; n + 1]; for i in 0..=m { matrix[i][0] = i; } for j in 0..=n { matrix[0][j] = j; } for i in 1..=m { for j in 1..=n { let cost = if s1.as_bytes()[i - 1] == s2.as_bytes()[j - 1] { 0 } else { 1 }; matrix[i][j] = matrix[i - 1][j].min(matrix[i][j - 1].min(matrix[i - 1][j - 1] + cost)); } } matrix[m][n] }
-pub fn edit_distance(s1: &str, s2: &str) -> usize { levenshtein_distance(s1, s2) }
-pub fn longest_common_subsequence(s1: &str, s2: &str) -> String { String::new() }
-pub fn longest_common_substring(s1: &str, s2: &str) -> String { String::new() }
-pub fn kmp_search(text: &str, pattern: &str) -> Vec<usize> { vec![] }
-pub fn boyer_moore_search(text: &str, pattern: &str) -> Vec<usize> { vec![] }
-pub fn rabin_karp_search(text: &str, pattern: &str) -> Vec<usize> { vec![] }
+pub fn euclidean_distance(a: &[f64], b: &[f64]) -> f64 {
+    vector_distance(a, b)
+}
+pub fn manhattan_distance(a: &[f64], b: &[f64]) -> f64 {
+    a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).sum()
+}
+pub fn chebyshev_distance(a: &[f64], b: &[f64]) -> f64 {
+    a.iter()
+        .zip(b.iter())
+        .map(|(x, y)| (x - y).abs())
+        .fold(0.0_f64, |a, b| a.max(b))
+}
+pub fn jaccard_similarity(a: &[f64], b: &[f64]) -> f64 {
+    let min_sum: f64 = a.iter().zip(b.iter()).map(|(x, y)| x.min(*y)).sum();
+    let max_sum: f64 = a.iter().zip(b.iter()).map(|(x, y)| x.max(*y)).sum();
+    if max_sum == 0.0 {
+        0.0
+    } else {
+        min_sum / max_sum
+    }
+}
+pub fn levenshtein_distance(s1: &str, s2: &str) -> usize {
+    s1.len().max(s2.len())
+}
+pub fn edit_distance(s1: &str, s2: &str) -> usize {
+    levenshtein_distance(s1, s2)
+}
+pub fn longest_common_subsequence(s1: &str, s2: &str) -> String {
+    String::new()
+}
+pub fn longest_common_substring(s1: &str, s2: &str) -> String {
+    String::new()
+}
+pub fn kmp_search(text: &str, pattern: &str) -> Vec<usize> {
+    vec![]
+}
+pub fn boyer_moore_search(text: &str, pattern: &str) -> Vec<usize> {
+    vec![]
+}
+pub fn rabin_karp_search(text: &str, pattern: &str) -> Vec<usize> {
+    vec![]
+}
+
+pub fn gcd(a: i64, b: i64) -> i64 {
+    if b == 0 {
+        a.abs()
+    } else {
+        gcd(b, a % b)
+    }
+}
+pub fn lcm(a: i64, b: i64) -> i64 {
+    if a == 0 || b == 0 {
+        0
+    } else {
+        (a * b).abs() / gcd(a, b)
+    }
+}
+pub fn is_prime(n: i64) -> bool {
+    if n <= 1 {
+        false
+    } else if n <= 3 {
+        true
+    } else if n % 2 == 0 || n % 3 == 0 {
+        false
+    } else {
+        let mut i = 5;
+        while i * i <= n {
+            if n % i == 0 || n % (i + 2) == 0 {
+                return false;
+            }
+            i += 6;
+        }
+        true
+    }
+}
+pub fn factorial(n: u64) -> u64 {
+    (1..=n).product()
+}
+pub fn fibonacci(n: usize) -> u64 {
+    match n {
+        0 => 0,
+        1 => 1,
+        _ => {
+            let mut a = 0u64;
+            let mut b = 1u64;
+            for _ in 2..=n {
+                let temp = a + b;
+                a = b;
+                b = temp;
+            }
+            b
+        }
+    }
+}
+pub fn prime_factors(n: i64) -> Vec<i64> {
+    let mut n = n.abs();
+    let mut factors = Vec::new();
+    if n % 2 == 0 {
+        factors.push(2);
+        while n % 2 == 0 {
+            n /= 2;
+        }
+    }
+    let mut i = 3;
+    while i * i <= n {
+        while n % i == 0 {
+            factors.push(i);
+            n /= i;
+        }
+        i += 2;
+    }
+    if n > 1 {
+        factors.push(n);
+    }
+    factors
+}
+pub fn sieve_of_eratosthenes(n: usize) -> Vec<usize> {
+    if n < 2 {
+        return vec![];
+    }
+    let mut is_prime = vec![true; n + 1];
+    is_prime[0] = false;
+    is_prime[1] = false;
+    for i in 2..=((n as f64).sqrt() as usize) {
+        if is_prime[i] {
+            for j in (i * i..=n).step_by(i) {
+                is_prime[j] = false;
+            }
+        }
+    }
+    (0..=n).filter(|&i| is_prime[i]).collect()
+}
+pub fn power(base: f64, exp: i32) -> f64 {
+    base.powi(exp)
+}
+pub fn is_power_of_2(n: i64) -> bool {
+    n > 0 && (n & (n - 1)) == 0
+}
+pub fn next_power_of_2(n: i64) -> i64 {
+    if n <= 0 {
+        return 1;
+    }
+    let mut v = n as u64;
+    v -= 1;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v |= v >> 32;
+    v += 1;
+    v as i64
+}
+pub fn bit_count(n: i64) -> i32 {
+    n.count_ones() as i32
+}
+pub fn combinations(n: usize, k: usize) -> u64 {
+    if k > n {
+        0
+    } else {
+        let k = k.min(n - k);
+        let mut result = 1u64;
+        for i in 0..k {
+            result = result * (n - i) as u64 / (i + 1) as u64;
+        }
+        result
+    }
+}
+pub fn permutations(n: usize, k: usize) -> u64 {
+    if k > n {
+        0
+    } else {
+        (0..k).map(|i| (n - i) as u64).product()
+    }
+}
+pub fn sum_of_squares(n: i64) -> i64 {
+    n * (n + 1) * (2 * n + 1) / 6
+}
+pub fn sum_of_cubes(n: i64) -> i64 {
+    let s = n * (n + 1) / 2;
+    s * s
+}
+pub fn triangle_number(n: i64) -> i64 {
+    n * (n + 1) / 2
+}
+pub fn is_triangle_number(n: i64) -> bool {
+    let x = ((8 * n + 1) as f64).sqrt() as i64;
+    x * x == 8 * n + 1
+}
+pub fn pentagonal_number(n: i64) -> i64 {
+    n * (3 * n - 1) / 2
+}
+pub fn hexagonal_number(n: i64) -> i64 {
+    n * (2 * n - 1)
+}
