@@ -53,4 +53,33 @@ pub mod garuda {
             _ => 0,
         }
     }
+
+    pub fn range_check(value: i64, min_val: i64, max_val: i64) -> bool {
+        value >= min_val && value <= max_val
+    }
+
+    pub fn clamp(value: i64, min_val: i64, max_val: i64) -> i64 {
+        if value < min_val {
+            min_val
+        } else if value > max_val {
+            max_val
+        } else {
+            value
+        }
+    }
+
+    pub fn normalize(values: &[i64]) -> Vec<f64> {
+        if values.is_empty() {
+            return vec![];
+        }
+        let min = *values.iter().min().unwrap() as f64;
+        let max = *values.iter().max().unwrap() as f64;
+        if (max - min).abs() < f64::EPSILON {
+            return vec![0.0; values.len()];
+        }
+        values
+            .iter()
+            .map(|&v| (v as f64 - min) / (max - min))
+            .collect()
+    }
 }
