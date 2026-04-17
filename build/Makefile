@@ -204,6 +204,19 @@ garuda/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/build
 .PHONY : garuda/fast
 
+#=============================================================================
+# Target rules for targets named garuda-tool
+
+# Build rule for target.
+garuda-tool: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 garuda-tool
+.PHONY : garuda-tool
+
+# fast build rule for target.
+garuda-tool/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda-tool.dir/build.make CMakeFiles/garuda-tool.dir/build
+.PHONY : garuda-tool/fast
+
 garuda/src/Domain/AbstractDomain.o: garuda/src/Domain/AbstractDomain.cpp.o
 .PHONY : garuda/src/Domain/AbstractDomain.o
 
@@ -227,6 +240,54 @@ garuda/src/Domain/AbstractDomain.s: garuda/src/Domain/AbstractDomain.cpp.s
 garuda/src/Domain/AbstractDomain.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Domain/AbstractDomain.cpp.s
 .PHONY : garuda/src/Domain/AbstractDomain.cpp.s
+
+garuda/src/Domain/BooleanDomain.o: garuda/src/Domain/BooleanDomain.cpp.o
+.PHONY : garuda/src/Domain/BooleanDomain.o
+
+# target to build an object file
+garuda/src/Domain/BooleanDomain.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.o
+.PHONY : garuda/src/Domain/BooleanDomain.cpp.o
+
+garuda/src/Domain/BooleanDomain.i: garuda/src/Domain/BooleanDomain.cpp.i
+.PHONY : garuda/src/Domain/BooleanDomain.i
+
+# target to preprocess a source file
+garuda/src/Domain/BooleanDomain.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.i
+.PHONY : garuda/src/Domain/BooleanDomain.cpp.i
+
+garuda/src/Domain/BooleanDomain.s: garuda/src/Domain/BooleanDomain.cpp.s
+.PHONY : garuda/src/Domain/BooleanDomain.s
+
+# target to generate assembly for a file
+garuda/src/Domain/BooleanDomain.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.s
+.PHONY : garuda/src/Domain/BooleanDomain.cpp.s
+
+garuda/src/Domain/IntegerDomain.o: garuda/src/Domain/IntegerDomain.cpp.o
+.PHONY : garuda/src/Domain/IntegerDomain.o
+
+# target to build an object file
+garuda/src/Domain/IntegerDomain.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.o
+.PHONY : garuda/src/Domain/IntegerDomain.cpp.o
+
+garuda/src/Domain/IntegerDomain.i: garuda/src/Domain/IntegerDomain.cpp.i
+.PHONY : garuda/src/Domain/IntegerDomain.i
+
+# target to preprocess a source file
+garuda/src/Domain/IntegerDomain.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.i
+.PHONY : garuda/src/Domain/IntegerDomain.cpp.i
+
+garuda/src/Domain/IntegerDomain.s: garuda/src/Domain/IntegerDomain.cpp.s
+.PHONY : garuda/src/Domain/IntegerDomain.s
+
+# target to generate assembly for a file
+garuda/src/Domain/IntegerDomain.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.s
+.PHONY : garuda/src/Domain/IntegerDomain.cpp.s
 
 garuda/src/Domain/ValueDomain.o: garuda/src/Domain/ValueDomain.cpp.o
 .PHONY : garuda/src/Domain/ValueDomain.o
@@ -276,6 +337,54 @@ garuda/src/Group/GroupDomain.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.s
 .PHONY : garuda/src/Group/GroupDomain.cpp.s
 
+garuda/src/Group/GroupDomainManager.o: garuda/src/Group/GroupDomainManager.cpp.o
+.PHONY : garuda/src/Group/GroupDomainManager.o
+
+# target to build an object file
+garuda/src/Group/GroupDomainManager.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.o
+.PHONY : garuda/src/Group/GroupDomainManager.cpp.o
+
+garuda/src/Group/GroupDomainManager.i: garuda/src/Group/GroupDomainManager.cpp.i
+.PHONY : garuda/src/Group/GroupDomainManager.i
+
+# target to preprocess a source file
+garuda/src/Group/GroupDomainManager.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.i
+.PHONY : garuda/src/Group/GroupDomainManager.cpp.i
+
+garuda/src/Group/GroupDomainManager.s: garuda/src/Group/GroupDomainManager.cpp.s
+.PHONY : garuda/src/Group/GroupDomainManager.s
+
+# target to generate assembly for a file
+garuda/src/Group/GroupDomainManager.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.s
+.PHONY : garuda/src/Group/GroupDomainManager.cpp.s
+
+garuda/tool/main.o: garuda/tool/main.cpp.o
+.PHONY : garuda/tool/main.o
+
+# target to build an object file
+garuda/tool/main.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda-tool.dir/build.make CMakeFiles/garuda-tool.dir/garuda/tool/main.cpp.o
+.PHONY : garuda/tool/main.cpp.o
+
+garuda/tool/main.i: garuda/tool/main.cpp.i
+.PHONY : garuda/tool/main.i
+
+# target to preprocess a source file
+garuda/tool/main.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda-tool.dir/build.make CMakeFiles/garuda-tool.dir/garuda/tool/main.cpp.i
+.PHONY : garuda/tool/main.cpp.i
+
+garuda/tool/main.s: garuda/tool/main.cpp.s
+.PHONY : garuda/tool/main.s
+
+# target to generate assembly for a file
+garuda/tool/main.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda-tool.dir/build.make CMakeFiles/garuda-tool.dir/garuda/tool/main.cpp.s
+.PHONY : garuda/tool/main.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -291,15 +400,28 @@ help:
 	@echo "... target_parser_gen"
 	@echo "... vt_gen"
 	@echo "... garuda"
+	@echo "... garuda-tool"
 	@echo "... garuda/src/Domain/AbstractDomain.o"
 	@echo "... garuda/src/Domain/AbstractDomain.i"
 	@echo "... garuda/src/Domain/AbstractDomain.s"
+	@echo "... garuda/src/Domain/BooleanDomain.o"
+	@echo "... garuda/src/Domain/BooleanDomain.i"
+	@echo "... garuda/src/Domain/BooleanDomain.s"
+	@echo "... garuda/src/Domain/IntegerDomain.o"
+	@echo "... garuda/src/Domain/IntegerDomain.i"
+	@echo "... garuda/src/Domain/IntegerDomain.s"
 	@echo "... garuda/src/Domain/ValueDomain.o"
 	@echo "... garuda/src/Domain/ValueDomain.i"
 	@echo "... garuda/src/Domain/ValueDomain.s"
 	@echo "... garuda/src/Group/GroupDomain.o"
 	@echo "... garuda/src/Group/GroupDomain.i"
 	@echo "... garuda/src/Group/GroupDomain.s"
+	@echo "... garuda/src/Group/GroupDomainManager.o"
+	@echo "... garuda/src/Group/GroupDomainManager.i"
+	@echo "... garuda/src/Group/GroupDomainManager.s"
+	@echo "... garuda/tool/main.o"
+	@echo "... garuda/tool/main.i"
+	@echo "... garuda/tool/main.s"
 .PHONY : help
 
 

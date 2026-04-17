@@ -1,0 +1,1 @@
+/usr/sbin/clang++ -O2 -pipe -fomit-frame-pointer -march=native -Wl,-O1 -Wl,--as-needed -Xlinker --dependency-file=CMakeFiles/garuda-tool.dir/link.d "CMakeFiles/garuda-tool.dir/garuda/tool/main.cpp.o" -o garuda-tool  libgaruda.a -lLLVM-22

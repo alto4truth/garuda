@@ -9,8 +9,11 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/u/codebases/garuda/garuda/src/Domain/AbstractDomain.cpp" "CMakeFiles/garuda.dir/garuda/src/Domain/AbstractDomain.cpp.o" "gcc" "CMakeFiles/garuda.dir/garuda/src/Domain/AbstractDomain.cpp.o.d"
+  "/home/u/codebases/garuda/garuda/src/Domain/BooleanDomain.cpp" "CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.o" "gcc" "CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.o.d"
+  "/home/u/codebases/garuda/garuda/src/Domain/IntegerDomain.cpp" "CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.o" "gcc" "CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.o.d"
   "/home/u/codebases/garuda/garuda/src/Domain/ValueDomain.cpp" "CMakeFiles/garuda.dir/garuda/src/Domain/ValueDomain.cpp.o" "gcc" "CMakeFiles/garuda.dir/garuda/src/Domain/ValueDomain.cpp.o.d"
   "/home/u/codebases/garuda/garuda/src/Group/GroupDomain.cpp" "CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o" "gcc" "CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o.d"
+  "/home/u/codebases/garuda/garuda/src/Group/GroupDomainManager.cpp" "CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.o" "gcc" "CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

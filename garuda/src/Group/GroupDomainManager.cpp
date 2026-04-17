@@ -25,9 +25,8 @@ std::shared_ptr<GroupDomain> GroupDomainManager::createGroup(const std::string& 
 
 std::shared_ptr<GroupDomain> GroupDomainManager::getGroup(const std::string& name) const {
     auto it = groups.find(name);
-    if (it != groups.end()) {
-        return it->second;
-    }
+    if (it != groups.end()) return it->second;
+    return nullptr;
     return nullptr;
 }
 

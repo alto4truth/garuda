@@ -100,10 +100,38 @@ CMakeFiles/garuda.dir/garuda/src/Domain/ValueDomain.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/garuda.dir/garuda/src/Domain/ValueDomain.cpp.s"
 	/usr/sbin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/u/codebases/garuda/garuda/src/Domain/ValueDomain.cpp -o CMakeFiles/garuda.dir/garuda/src/Domain/ValueDomain.cpp.s
 
+CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.o: CMakeFiles/garuda.dir/flags.make
+CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.o: /home/u/codebases/garuda/garuda/src/Domain/IntegerDomain.cpp
+CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.o: CMakeFiles/garuda.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/u/codebases/garuda/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.o"
+	/usr/sbin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.o -MF CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.o.d -o CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.o -c /home/u/codebases/garuda/garuda/src/Domain/IntegerDomain.cpp
+
+CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.i"
+	/usr/sbin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/u/codebases/garuda/garuda/src/Domain/IntegerDomain.cpp > CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.i
+
+CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.s"
+	/usr/sbin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/u/codebases/garuda/garuda/src/Domain/IntegerDomain.cpp -o CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.s
+
+CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.o: CMakeFiles/garuda.dir/flags.make
+CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.o: /home/u/codebases/garuda/garuda/src/Domain/BooleanDomain.cpp
+CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.o: CMakeFiles/garuda.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/u/codebases/garuda/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.o"
+	/usr/sbin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.o -MF CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.o.d -o CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.o -c /home/u/codebases/garuda/garuda/src/Domain/BooleanDomain.cpp
+
+CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.i"
+	/usr/sbin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/u/codebases/garuda/garuda/src/Domain/BooleanDomain.cpp > CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.i
+
+CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.s"
+	/usr/sbin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/u/codebases/garuda/garuda/src/Domain/BooleanDomain.cpp -o CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.s
+
 CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o: CMakeFiles/garuda.dir/flags.make
 CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o: /home/u/codebases/garuda/garuda/src/Group/GroupDomain.cpp
 CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o: CMakeFiles/garuda.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/u/codebases/garuda/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/u/codebases/garuda/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o"
 	/usr/sbin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o -MF CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o.d -o CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o -c /home/u/codebases/garuda/garuda/src/Group/GroupDomain.cpp
 
 CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.i: cmake_force
@@ -114,21 +142,41 @@ CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.s"
 	/usr/sbin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/u/codebases/garuda/garuda/src/Group/GroupDomain.cpp -o CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.s
 
+CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.o: CMakeFiles/garuda.dir/flags.make
+CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.o: /home/u/codebases/garuda/garuda/src/Group/GroupDomainManager.cpp
+CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.o: CMakeFiles/garuda.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/u/codebases/garuda/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.o"
+	/usr/sbin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.o -MF CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.o.d -o CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.o -c /home/u/codebases/garuda/garuda/src/Group/GroupDomainManager.cpp
+
+CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.i"
+	/usr/sbin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/u/codebases/garuda/garuda/src/Group/GroupDomainManager.cpp > CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.i
+
+CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.s"
+	/usr/sbin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/u/codebases/garuda/garuda/src/Group/GroupDomainManager.cpp -o CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.s
+
 # Object files for target garuda
 garuda_OBJECTS = \
 "CMakeFiles/garuda.dir/garuda/src/Domain/AbstractDomain.cpp.o" \
 "CMakeFiles/garuda.dir/garuda/src/Domain/ValueDomain.cpp.o" \
-"CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o"
+"CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.o" \
+"CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.o" \
+"CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o" \
+"CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.o"
 
 # External object files for target garuda
 garuda_EXTERNAL_OBJECTS =
 
 libgaruda.a: CMakeFiles/garuda.dir/garuda/src/Domain/AbstractDomain.cpp.o
 libgaruda.a: CMakeFiles/garuda.dir/garuda/src/Domain/ValueDomain.cpp.o
+libgaruda.a: CMakeFiles/garuda.dir/garuda/src/Domain/IntegerDomain.cpp.o
+libgaruda.a: CMakeFiles/garuda.dir/garuda/src/Domain/BooleanDomain.cpp.o
 libgaruda.a: CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o
+libgaruda.a: CMakeFiles/garuda.dir/garuda/src/Group/GroupDomainManager.cpp.o
 libgaruda.a: CMakeFiles/garuda.dir/build.make
 libgaruda.a: CMakeFiles/garuda.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/u/codebases/garuda/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX static library libgaruda.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/u/codebases/garuda/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Linking CXX static library libgaruda.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/garuda.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/garuda.dir/link.txt --verbose=$(VERBOSE)
 

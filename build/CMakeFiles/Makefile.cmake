@@ -81,4 +81,5 @@ set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/acc_gen.dir/DependInfo.cmake"
   "CMakeFiles/target_parser_gen.dir/DependInfo.cmake"
   "CMakeFiles/garuda.dir/DependInfo.cmake"
+  "CMakeFiles/garuda-tool.dir/DependInfo.cmake"
   )
