@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/u/codebases/garuda/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

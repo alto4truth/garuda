@@ -1,0 +1,9 @@
+/home/u/codebases/garuda/build/CMakeFiles/intrinsics_gen.dir
+/home/u/codebases/garuda/build/CMakeFiles/vt_gen.dir
+/home/u/codebases/garuda/build/CMakeFiles/omp_gen.dir
+/home/u/codebases/garuda/build/CMakeFiles/acc_gen.dir
+/home/u/codebases/garuda/build/CMakeFiles/target_parser_gen.dir
+/home/u/codebases/garuda/build/CMakeFiles/garuda.dir
+/home/u/codebases/garuda/build/CMakeFiles/test.dir
+/home/u/codebases/garuda/build/CMakeFiles/edit_cache.dir
+/home/u/codebases/garuda/build/CMakeFiles/rebuild_cache.dir

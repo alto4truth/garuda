@@ -3,6 +3,18 @@ pub mod domains {
         pub fn domain_analyze(value: i64) -> i64 {
             value * 3
         }
+
+        pub fn domain_transform(values: &[i64]) -> Vec<i64> {
+            values.iter().map(|x| x * 2 + 1).collect()
+        }
+
+        pub fn domain_combine(a: &[i64], b: &[i64]) -> Vec<i64> {
+            let mut result = Vec::new();
+            for i in 0..std::cmp::min(a.len(), b.len()) {
+                result.push(a[i] + b[i]);
+            }
+            result
+        }
     }
 }
 

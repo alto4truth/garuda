@@ -17,10 +17,6 @@ add_definitions(${LLVM_DEFINITIONS})
 set(GARUDA_SOURCES
     garuda/src/Domain/AbstractDomain.cpp
     garuda/src/Domain/ValueDomain.cpp
-    garuda/src/Domain/BooleanDomain.cpp
-    garuda/src/Domain/IntegerDomain.cpp
-    garuda/src/Domain/PointerDomain.cpp
-    garuda/src/Domain/IntervalDomain.cpp
 )
 
 add_library(garuda STATIC ${GARUDA_SOURCES})
@@ -32,8 +28,5 @@ set_target_properties(garuda PROPERTIES
     LINKER_LANGUAGE CXX
     POSITION_INDEPENDENT_CODE ON
 )
-
-add_executable(garuda-tool garuda/tool/main.cpp)
-target_link_libraries(garuda-tool PRIVATE garuda)
 
 enable_testing()
