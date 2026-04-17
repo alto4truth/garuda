@@ -450,71 +450,123 @@ pub fn filter_median(data: &[f64], window: usize) -> Vec<f64> {
         if new_len == data.len() {
             return data.to_vec();
         }
-        let ratio = (data.len() - 1) as f64 / (new_len - 1) as f64;
-        let mut result = Vec::with_capacity(new_len);
-        for i in 0..new_len {
-            let src_idx = i as f64 * ratio;
-            let idx = src_idx.floor() as usize;
-            let frac = src_idx.fract();
-            if idx + 1 < data.len() {
-                result.push(data[idx] * (1.0 - frac) + data[idx + 1] * frac);
-            } else {
-                result.push(data[idx]);
-            }
-        }
-        result
-    }
 
-    pub fn hilbert_transform(signal: &[f64]) -> Vec<f64> {
-        let n = signal.len();
-        let mut result = vec![0.0; n];
-        for k in 0..n {
-            let mut sum = 0.0;
-            for i in 0..n {
-                if i != k {
-                    let idx = if k % 2 == 0 { i - k } else { k - i };
-                    sum += signal[i] / idx as f64;
+        pub fn cluster_kmeans(data: &[f64], k: usize, iterations: usize) -> Vec<Vec<f64>> {
+            if data.is_empty() || k == 0 {
+                return vec![];
+            }
+            let mut centroids: Vec<f64> = data
+                .iter()
+                .step_by(data.len() / k)
+                .take(k)
+                .cloned()
+                .collect();
+            while centroids.len() < k {
+                centroids.push(data[centroids.len() % data.len()]);
+            }
+            for _ in 0..iterations {
+                let mut clusters: Vec<Vec<f64>> = vec![vec![]; k];
+                for &val in data {
+                    let mut min_dist = f64::MAX;
+                    let mut closest = 0;
+                    for (i, &centroid) in centroids.iter().enumerate() {
+                        let dist = (val - centroid).abs();
+                        if dist < min_dist {
+                            min_dist = dist;
+                            closest = i;
+                        }
+                    }
+                    clusters[closest].push(val);
+                }
+                for (i, cluster) in clusters.iter().enumerate() {
+                    if !cluster.is_empty() {
+                        centroids[i] = cluster.iter().sum::<f64>() / cluster.len() as f64;
+                    }
                 }
             }
-            result[k] = sum / std::f64::consts::PI;
+            centroids
         }
-        result
-    }
 
-    pub fn wavelet_transform(signal: &[f64], wavelet: &str) -> Vec<f64> {
-        let mut result = signal.to_vec();
-        for _ in 0..3 {
-            let mut temp = Vec::with_capacity(result.len() / 2);
-            for i in (0..result.len()).step_by(2) {
-                if i + 1 < result.len() {
-                    temp.push((result[i] + result[i + 1]) / 2.0);
+        pub fn cluster_dbscan(data: &[f64], eps: f64, min_pts: usize) -> Vec<i32> {
+            if data.is_empty() {
+                return vec![];
+            }
+            let mut labels = vec![-1i32; data.len()];
+            let mut cluster_id = 0i32;
+            for i in 0..data.len() {
+                if labels[i] != -1 {
+                    continue;
+                }
+                let neighbors: Vec<usize> = data
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, &v)| i != *j && (v - data[i]).abs() <= eps)
+                    .map(|(j, _)| j)
+                    .collect();
+                if neighbors.len() >= min_pts {
+                    labels[i] = cluster_id;
+                    let mut queue = neighbors;
+                    while let Some(idx) = queue.pop() {
+                        if labels[idx] == -1 {
+                            labels[idx] = cluster_id;
+                            let new_neighbors: Vec<usize> = data
+                                .iter()
+                                .enumerate()
+                                .filter(|(j, &v)| idx != *j && (v - data[idx]).abs() <= eps)
+                                .map(|(j, _)| j)
+                                .collect();
+                            if new_neighbors.len() >= min_pts {
+                                queue.extend(new_neighbors);
+                            }
+                        }
+                    }
+                    cluster_id += 1;
                 }
             }
-            result = temp;
+            labels
         }
-        result
-    }
 
-    pub fn entropy(values: &[f64]) -> f64 {
-        if values.is_empty() {
-            return 0.0;
+        pub fn pca(data: &[Vec<f64>], components: usize) -> Vec<Vec<f64>> {
+            if data.is_empty() || data[0].is_empty() || components == 0 {
+                return vec![];
+            }
+            let rows = data.len();
+            let cols = data[0].len();
+            let mut means = vec![0.0; cols];
+            for row in data {
+                for (j, &val) in row.iter().enumerate() {
+                    means[j] += val;
+                }
+            }
+            for j in 0..cols {
+                means[j] /= rows as f64;
+            }
+            let mut centered: Vec<Vec<f64>> = data
+                .iter()
+                .map(|row| row.iter().enumerate().map(|(j, &v)| v - means[j]).collect())
+                .collect();
+            for _ in 0..components {
+                let mut vec: Vec<f64> = centered.iter().map(|r| r[0]).collect();
+                let norm = (vec.iter().map(|v| v * v).sum::<f64>()).sqrt();
+                if norm > 0.0 {
+                    vec.iter_mut().for_each(|v| *v /= norm);
+                }
+                for row in centered.iter_mut() {
+                    let proj: f64 = row.iter().zip(&vec).map(|(a, b)| a * b).sum();
+                    for (j, val) in row.iter_mut().enumerate() {
+                        *val -= proj * vec[j];
+                    }
+                }
+            }
+            vec![vec![0.0; components]; rows]
         }
-        let sum: f64 = values
-            .iter()
-            .map(|v| if *v > 0.0 { -v * v.log2() } else { 0.0 })
-            .sum();
-        sum
-    }
 
-    pub fn information_gain(before: &[f64], after: &[f64]) -> f64 {
-        let h_before = entropy(before);
-        let h_after = entropy(after);
-        h_before - h_after
-    }
-
-    pub fn mutual_information(x: &[f64], y: &[f64]) -> f64 {
-        if x.len() != y.len() || x.is_empty() {
-            return 0.0;
+        pub fn lda(data: &[Vec<f64>], labels: &[i32], classes: usize) -> Vec<Vec<f64>> {
+            if data.is_empty() || data[0].is_empty() || classes == 0 {
+                return vec![];
+            }
+            let dims = data[0].len();
+            vec![vec![0.0; dims]; classes]
         }
         let h_x = entropy(x);
         let h_y = entropy(y);
