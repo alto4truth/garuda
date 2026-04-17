@@ -1196,3 +1196,10 @@ pub fn is_abundant(n: i64) -> bool {
 pub fn is_deficient(n: i64) -> bool {
     n > 0 && divisor_sum(n) < n
 }
+
+pub fn format_number(n: i64, base: usize) -> String { if n == 0 { return "0".to_string(); } let mut result = String::new(); let mut n = n; while n > 0 { let d = (n % base as i64) as usize; result.push(if d < 10 { ("0".as_bytes()[0] + d as u8) as char } else { ("a".as_bytes()[0] + (d - 10) as u8) as char }); n /= base as i64; } result.chars().rev().collect() }
+pub fn parse_number(s: &str, base: usize) -> Option<i64> { let mut result = 0i64; for c in s.chars() { let d = if c.is_ascii_digit() { c as i64 - 48 } else if c.is_ascii_lowercase() { c as i64 - 97 + 10 } else if c.is_ascii_uppercase() { c as i64 - 65 + 10 } else { return None; }; if d >= base as i64 { return None; } result = result * base as i64 + d; } Some(result) }
+pub fn digits(n: i64) -> usize { n.abs().to_string().len() }
+pub fn sum_of_digits(n: i64) -> i64 { n.abs().to_string().chars().map(|c| c as i64 - 48).sum() }
+pub fn is_harshad(n: i64) -> bool { n > 0 && n % sum_of_digits(n) == 0 }
+pub fn is_coprime(a: i64, b: i64) -> bool { gcd(a, b) == 1 }
