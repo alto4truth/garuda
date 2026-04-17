@@ -1,3 +1,8 @@
+pub mod blockchain;
+pub mod mentalic;
+pub mod p2p;
+pub mod stats;
+
 pub mod domains {
     pub mod analysis {
         pub fn domain_analyze(value: i64) -> i64 {
@@ -591,8 +596,8 @@ pub fn normalize_minmax(values: &[f64]) -> Vec<f64> {
     if values.is_empty() {
         return vec![];
     }
-    let min = *values.iter().min().unwrap();
-    let max = *values.iter().max().unwrap();
+    let min = values.iter().fold(f64::INFINITY, |a, &b| a.min(b));
+    let max = values.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
     if (max - min).abs() < f64::EPSILON {
         return values.iter().map(|_| 0.5).collect();
     }
@@ -1197,16 +1202,149 @@ pub fn is_deficient(n: i64) -> bool {
     n > 0 && divisor_sum(n) < n
 }
 
-pub fn format_number(n: i64, base: usize) -> String { if n == 0 { return "0".to_string(); } let mut result = String::new(); let mut n = n; while n > 0 { let d = (n % base as i64) as usize; result.push(if d < 10 { ("0".as_bytes()[0] + d as u8) as char } else { ("a".as_bytes()[0] + (d - 10) as u8) as char }); n /= base as i64; } result.chars().rev().collect() }
-pub fn parse_number(s: &str, base: usize) -> Option<i64> { let mut result = 0i64; for c in s.chars() { let d = if c.is_ascii_digit() { c as i64 - 48 } else if c.is_ascii_lowercase() { c as i64 - 97 + 10 } else if c.is_ascii_uppercase() { c as i64 - 65 + 10 } else { return None; }; if d >= base as i64 { return None; } result = result * base as i64 + d; } Some(result) }
-pub fn digits(n: i64) -> usize { n.abs().to_string().len() }
-pub fn sum_of_digits(n: i64) -> i64 { n.abs().to_string().chars().map(|c| c as i64 - 48).sum() }
-pub fn is_harshad(n: i64) -> bool { n > 0 && n % sum_of_digits(n) == 0 }
-pub fn is_coprime(a: i64, b: i64) -> bool { gcd(a, b) == 1 }
+pub fn format_number(n: i64, base: usize) -> String {
+    if n == 0 {
+        return "0".to_string();
+    }
+    let mut result = String::new();
+    let mut n = n;
+    while n > 0 {
+        let d = (n % base as i64) as usize;
+        result.push(if d < 10 {
+            ("0".as_bytes()[0] + d as u8) as char
+        } else {
+            ("a".as_bytes()[0] + (d - 10) as u8) as char
+        });
+        n /= base as i64;
+    }
+    result.chars().rev().collect()
+}
+pub fn parse_number(s: &str, base: usize) -> Option<i64> {
+    let mut result = 0i64;
+    for c in s.chars() {
+        let d = if c.is_ascii_digit() {
+            c as i64 - 48
+        } else if c.is_ascii_lowercase() {
+            c as i64 - 97 + 10
+        } else if c.is_ascii_uppercase() {
+            c as i64 - 65 + 10
+        } else {
+            return None;
+        };
+        if d >= base as i64 {
+            return None;
+        }
+        result = result * base as i64 + d;
+    }
+    Some(result)
+}
+pub fn digits(n: i64) -> usize {
+    n.abs().to_string().len()
+}
+pub fn sum_of_digits(n: i64) -> i64 {
+    n.abs().to_string().chars().map(|c| c as i64 - 48).sum()
+}
+pub fn is_harshad(n: i64) -> bool {
+    n > 0 && n % sum_of_digits(n) == 0
+}
+pub fn is_coprime(a: i64, b: i64) -> bool {
+    gcd(a, b) == 1
+}
 
-pub fn bernoulli_number(n: usize) -> f64 { if n == 0 { return 1.0; } if n == 1 { return -0.5; } if n % 2 == 1 { return 0.0; } let mut nums: Vec<f64> = vec![1.0]; for m in 0..n { nums.push(0.0); for k in 0..=m { let term = combinations(m + 1, k) as f64 * nums[k]; if (m - k) % 2 == 0 { nums[m + 1] += term; } else { nums[m + 1] -= term; } } nums[m + 1] /= (m + 2) as f64; } nums[n] }
-pub fn stirling_second(n: usize, k: usize) -> u64 { if k > n { 0 } else if n == 0 && k == 0 { 1 } else if k == 0 || k == n { 0 } else { let mut dp = vec![vec![0u64; k + 1]; dp[0][0] = 1; for i in 1..=n { for j in 1..=k.min(i) { dp[i][j] = j as u64 * dp[i - 1][j] + dp[i - 1][j - 1]; } } dp[n][k] } }
-pub fn eulerian_number(n: usize, k: usize) -> u64 { if k >= n { return 0; } if n == 1 { return 1; } let mut a = vec![0u64; n]; a[0] = 1; for i in 2..=n { let mut next = vec![0u64; i]; for j in 0..i { let left = if j > 0 { a[j - 1] } else { 0 }; let right = if j < i - 1 { (i - 1) as u64 * a[j] } else { 0 }; next[j] = left + right; } a = next; } a[k] }
-pub fn bell_number(n: usize) -> u64 { if n == 0 { return 1; } let mut b = vec![1u64]; for i in 1..=n { let mut next = vec![0u64; i + 1]; for j in 0..i { next[j] = b[j] * i as u64 + if j > 0 { b[j - 1] } else { 0 }; } b = next; } b[n] }
-pub fn partitions(n: usize) -> u64 { let mut p = vec![0u64; n + 1]; p[0] = 1; for i in 1..=n { for j in i..=n { p[j] += p[j - i]; } } p[n] }
-pub fn partitions_gen(n: usize) -> Vec<u64> { let mut p = vec![0u64; n + 1]; p[0] = 1; for i in 1..=n { for j in i..=n { p[j] += p[j - i]; } } p }
+pub fn bernoulli_number(n: usize) -> f64 {
+    if n == 0 {
+        return 1.0;
+    }
+    if n == 1 {
+        return -0.5;
+    }
+    if n % 2 == 1 {
+        return 0.0;
+    }
+    let mut nums: Vec<f64> = vec![1.0];
+    for m in 0..n {
+        nums.push(0.0);
+        for k in 0..=m {
+            let term = combinations(m + 1, k) as f64 * nums[k];
+            if (m - k) % 2 == 0 {
+                nums[m + 1] += term;
+            } else {
+                nums[m + 1] -= term;
+            }
+        }
+        nums[m + 1] /= (m + 2) as f64;
+    }
+    nums[n]
+}
+pub fn stirling_second(n: usize, k: usize) -> u64 {
+    if k > n {
+        0
+    } else if n == 0 && k == 0 {
+        1
+    } else if k == 0 || k == n {
+        1
+    } else {
+        let mut dp = vec![vec![0u64; k + 1]; n + 1];
+        dp[0][0] = 1;
+        for i in 1..=n {
+            for j in 1..=k.min(i) {
+                dp[i][j] = j as u64 * dp[i - 1][j] + dp[i - 1][j - 1];
+            }
+        }
+        dp[n][k]
+    }
+}
+pub fn eulerian_number(n: usize, k: usize) -> u64 {
+    if k >= n {
+        return 0;
+    }
+    if n == 1 {
+        return 1;
+    }
+    let mut a = vec![0u64; n];
+    a[0] = 1;
+    for i in 2..=n {
+        let mut next = vec![0u64; i];
+        for j in 0..i {
+            let left = if j > 0 { a[j - 1] } else { 0 };
+            let right = if j < i - 1 { (i - 1) as u64 * a[j] } else { 0 };
+            next[j] = left + right;
+        }
+        a = next;
+    }
+    a[k]
+}
+pub fn bell_number(n: usize) -> u64 {
+    if n == 0 {
+        return 1;
+    }
+    let mut b = vec![1u64];
+    for i in 1..=n {
+        let mut next = vec![0u64; i + 1];
+        for j in 0..i {
+            next[j] = b[j] * i as u64 + if j > 0 { b[j - 1] } else { 0 };
+        }
+        b = next;
+    }
+    b[n]
+}
+pub fn partitions(n: usize) -> u64 {
+    let mut p = vec![0u64; n + 1];
+    p[0] = 1;
+    for i in 1..=n {
+        for j in i..=n {
+            p[j] += p[j - i];
+        }
+    }
+    p[n]
+}
+pub fn partitions_gen(n: usize) -> Vec<u64> {
+    let mut p = vec![0u64; n + 1];
+    p[0] = 1;
+    for i in 1..=n {
+        for j in i..=n {
+            p[j] += p[j - i];
+        }
+    }
+    p
+}
