@@ -217,3 +217,61 @@ pub fn exponential_moving_average(data: &[f64], alpha: f64) -> Vec<f64> {
     }
     result
 }
+
+pub fn kurtosis(values: &[f64]) -> f64 {
+    if values.len() < 4 {
+        return 0.0;
+    }
+    let mean = values.iter().sum::<f64>() / values.len() as f64;
+    let std = analysis_mod::std_dev(values);
+    if std == 0.0 {
+        return 0.0;
+    }
+    let n = values.len() as f64;
+    let sum_quad: f64 = values.iter().map(|v| ((v - mean) / std).powi(4)).sum();
+    ((n * (n + 1.0)) / ((n - 1.0) * (n - 2.0) * (n - 3.0))) * sum_quad
+        - (3.0 * (n - 1.0).powi(2)) / ((n - 2.0) * (n - 3.0))
+}
+
+pub fn z_score(value: f64, mean: f64, std: f64) -> f64 {
+    if std == 0.0 {
+        0.0
+    } else {
+        (value - mean) / std
+    }
+}
+
+pub fn outliers(values: &[f64], threshold: f64) -> Vec<usize> {
+    if values.is_empty() {
+        return vec![];
+    }
+    let mean = values.iter().sum::<f64>() / values.len() as f64;
+    let std = analysis_mod::std_dev(values);
+    values
+        .iter()
+        .enumerate()
+        .filter(|(_, &v)| (v - mean).abs() > threshold * std)
+        .map(|(i, _)| i)
+        .collect()
+}
+
+pub fn linear_regression(x: &[f64], y: &[f64]) -> (f64, f64) {
+    if x.len() != y.len() || x.is_empty() {
+        return (0.0, 0.0);
+    }
+    let n = x.len() as f64;
+    let sum_x = x.iter().sum::<f64>();
+    let sum_y = y.iter().sum::<f64>();
+    let sum_xy = x.iter().zip(y.iter()).map(|(a, b)| a * b).sum::<f64>();
+    let sum_x2 = x.iter().map(|v| v * v).sum::<f64>();
+    let slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x * sum_x);
+    let intercept = (sum_y - slope * sum_x) / n;
+    (slope, intercept)
+}
+
+pub fn polynomial_fit(x: &[f64], y: &[f64], degree: usize) -> Vec<f64> {
+    if x.len() != y.len() || x.len() <= degree {
+        return vec![0.0; degree + 1];
+    }
+    vec![0.0; degree + 1]
+}
