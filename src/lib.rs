@@ -442,6 +442,90 @@ pub fn filter_median(data: &[f64], window: usize) -> Vec<f64> {
         }
         result
     }
+
+    pub fn resample(data: &[f64], new_len: usize) -> Vec<f64> {
+        if data.is_empty() || new_len == 0 {
+            return vec![];
+        }
+        if new_len == data.len() {
+            return data.to_vec();
+        }
+        let ratio = (data.len() - 1) as f64 / (new_len - 1) as f64;
+        let mut result = Vec::with_capacity(new_len);
+        for i in 0..new_len {
+            let src_idx = i as f64 * ratio;
+            let idx = src_idx.floor() as usize;
+            let frac = src_idx.fract();
+            if idx + 1 < data.len() {
+                result.push(data[idx] * (1.0 - frac) + data[idx + 1] * frac);
+            } else {
+                result.push(data[idx]);
+            }
+        }
+        result
+    }
+
+    pub fn hilbert_transform(signal: &[f64]) -> Vec<f64> {
+        let n = signal.len();
+        let mut result = vec![0.0; n];
+        for k in 0..n {
+            let mut sum = 0.0;
+            for i in 0..n {
+                if i != k {
+                    let idx = if k % 2 == 0 { i - k } else { k - i };
+                    sum += signal[i] / idx as f64;
+                }
+            }
+            result[k] = sum / std::f64::consts::PI;
+        }
+        result
+    }
+
+    pub fn wavelet_transform(signal: &[f64], wavelet: &str) -> Vec<f64> {
+        let mut result = signal.to_vec();
+        for _ in 0..3 {
+            let mut temp = Vec::with_capacity(result.len() / 2);
+            for i in (0..result.len()).step_by(2) {
+                if i + 1 < result.len() {
+                    temp.push((result[i] + result[i + 1]) / 2.0);
+                }
+            }
+            result = temp;
+        }
+        result
+    }
+
+    pub fn entropy(values: &[f64]) -> f64 {
+        if values.is_empty() {
+            return 0.0;
+        }
+        let sum: f64 = values
+            .iter()
+            .map(|v| if *v > 0.0 { -v * v.log2() } else { 0.0 })
+            .sum();
+        sum
+    }
+
+    pub fn information_gain(before: &[f64], after: &[f64]) -> f64 {
+        let h_before = entropy(before);
+        let h_after = entropy(after);
+        h_before - h_after
+    }
+
+    pub fn mutual_information(x: &[f64], y: &[f64]) -> f64 {
+        if x.len() != y.len() || x.is_empty() {
+            return 0.0;
+        }
+        let h_x = entropy(x);
+        let h_y = entropy(y);
+        let h_xy = entropy(
+            &x.iter()
+                .zip(y)
+                .map(|(a, b)| (*a - *b).abs())
+                .collect::<Vec<_>>(),
+        );
+        h_x + h_y - h_xy
+    }
     let half = window / 2;
     let mut result = Vec::with_capacity(data.len());
     for i in 0..data.len() {
