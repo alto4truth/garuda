@@ -70,7 +70,7 @@ bool GroupDomainManager::mergeGroups(const std::string& from, const std::string&
     if (from_it == groups.end() || to_it == groups.end()) {
         return false;
     }
-    auto merged = (*from_it->second)->join(*to_it->second);
+    auto merged = from_it->second->join(*to_it->second);
     if (auto* merged_group = dynamic_cast<GroupDomain*>(merged.get())) {
         to_it->second = std::shared_ptr<GroupDomain>(merged_group);
         groups.erase(from_it);

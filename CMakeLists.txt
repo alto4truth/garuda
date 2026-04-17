@@ -17,6 +17,7 @@ add_definitions(${LLVM_DEFINITIONS})
 set(GARUDA_SOURCES
     garuda/src/Domain/AbstractDomain.cpp
     garuda/src/Domain/ValueDomain.cpp
+    garuda/src/Group/GroupDomain.cpp
 )
 
 add_library(garuda STATIC ${GARUDA_SOURCES})

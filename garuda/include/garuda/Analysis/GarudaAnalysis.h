@@ -40,6 +40,7 @@ public:
 
     void setProperty(const std::string& key, const std::string& value);
     std::optional<std::string> getProperty(const std::string& key) const;
+    std::map<std::string, std::string> getProperties() const;
 
     void clear();
     bool hasIssues() const;

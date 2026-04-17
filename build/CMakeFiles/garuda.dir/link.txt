@@ -1,2 +1,2 @@
-/usr/sbin/llvm-ar qc libgaruda.a CMakeFiles/garuda.dir/garuda/src/Domain/AbstractDomain.cpp.o CMakeFiles/garuda.dir/garuda/src/Domain/ValueDomain.cpp.o
+/usr/sbin/llvm-ar qc libgaruda.a CMakeFiles/garuda.dir/garuda/src/Domain/AbstractDomain.cpp.o CMakeFiles/garuda.dir/garuda/src/Domain/ValueDomain.cpp.o CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o
 /usr/sbin/llvm-ranlib libgaruda.a

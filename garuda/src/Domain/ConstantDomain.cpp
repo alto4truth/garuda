@@ -241,7 +241,7 @@ llvm::APSInt ConstantDomain::getAbstractInteger() const {
 llvm::APFloat ConstantDomain::getAbstractFloat() const {
     if (isFloat()) return llvm::APFloat(getFloatValue());
     if (isInteger()) return llvm::APFloat(static_cast<double>(getIntValue()));
-    return llvm::APFloat();
+    return llvm::APFloat(0.0);
 }
 
 bool ConstantDomain::getAbstractBoolean() const {

@@ -252,6 +252,30 @@ garuda/src/Domain/ValueDomain.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Domain/ValueDomain.cpp.s
 .PHONY : garuda/src/Domain/ValueDomain.cpp.s
 
+garuda/src/Group/GroupDomain.o: garuda/src/Group/GroupDomain.cpp.o
+.PHONY : garuda/src/Group/GroupDomain.o
+
+# target to build an object file
+garuda/src/Group/GroupDomain.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o
+.PHONY : garuda/src/Group/GroupDomain.cpp.o
+
+garuda/src/Group/GroupDomain.i: garuda/src/Group/GroupDomain.cpp.i
+.PHONY : garuda/src/Group/GroupDomain.i
+
+# target to preprocess a source file
+garuda/src/Group/GroupDomain.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.i
+.PHONY : garuda/src/Group/GroupDomain.cpp.i
+
+garuda/src/Group/GroupDomain.s: garuda/src/Group/GroupDomain.cpp.s
+.PHONY : garuda/src/Group/GroupDomain.s
+
+# target to generate assembly for a file
+garuda/src/Group/GroupDomain.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.s
+.PHONY : garuda/src/Group/GroupDomain.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -273,6 +297,9 @@ help:
 	@echo "... garuda/src/Domain/ValueDomain.o"
 	@echo "... garuda/src/Domain/ValueDomain.i"
 	@echo "... garuda/src/Domain/ValueDomain.s"
+	@echo "... garuda/src/Group/GroupDomain.o"
+	@echo "... garuda/src/Group/GroupDomain.i"
+	@echo "... garuda/src/Group/GroupDomain.s"
 .PHONY : help
 
 

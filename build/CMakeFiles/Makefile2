@@ -250,12 +250,12 @@ CMakeFiles/target_parser_gen.dir/clean:
 CMakeFiles/garuda.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/u/codebases/garuda/build/CMakeFiles --progress-num=1,2,3 "Built target garuda"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/u/codebases/garuda/build/CMakeFiles --progress-num=1,2,3,4 "Built target garuda"
 .PHONY : CMakeFiles/garuda.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/garuda.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/u/codebases/garuda/build/CMakeFiles 3
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/u/codebases/garuda/build/CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/garuda.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/u/codebases/garuda/build/CMakeFiles 0
 .PHONY : CMakeFiles/garuda.dir/rule
@@ -267,7 +267,7 @@ garuda: CMakeFiles/garuda.dir/rule
 # codegen rule for target.
 CMakeFiles/garuda.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/garuda.dir/build.make CMakeFiles/garuda.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/u/codebases/garuda/build/CMakeFiles --progress-num=1,2,3 "Finished codegen for target garuda"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/u/codebases/garuda/build/CMakeFiles --progress-num=1,2,3,4 "Finished codegen for target garuda"
 .PHONY : CMakeFiles/garuda.dir/codegen
 
 # clean rule for target.

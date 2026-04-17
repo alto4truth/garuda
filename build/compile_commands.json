@@ -10,5 +10,11 @@
   "command": "/usr/sbin/clang++  -I/home/u/codebases/garuda/garuda/include -O2 -pipe -fomit-frame-pointer -march=native -std=gnu++17 -fPIC   -D_GNU_SOURCE -D_GLIBCXX_USE_CXX11_ABI=1 -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -o CMakeFiles/garuda.dir/garuda/src/Domain/ValueDomain.cpp.o -c /home/u/codebases/garuda/garuda/src/Domain/ValueDomain.cpp",
   "file": "/home/u/codebases/garuda/garuda/src/Domain/ValueDomain.cpp",
   "output": "CMakeFiles/garuda.dir/garuda/src/Domain/ValueDomain.cpp.o"
+},
+{
+  "directory": "/home/u/codebases/garuda/build",
+  "command": "/usr/sbin/clang++  -I/home/u/codebases/garuda/garuda/include -O2 -pipe -fomit-frame-pointer -march=native -std=gnu++17 -fPIC   -D_GNU_SOURCE -D_GLIBCXX_USE_CXX11_ABI=1 -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -o CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o -c /home/u/codebases/garuda/garuda/src/Group/GroupDomain.cpp",
+  "file": "/home/u/codebases/garuda/garuda/src/Group/GroupDomain.cpp",
+  "output": "CMakeFiles/garuda.dir/garuda/src/Group/GroupDomain.cpp.o"
 }
 ]

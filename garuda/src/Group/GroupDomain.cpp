@@ -41,7 +41,17 @@ GroupDomain::GroupDomain(const std::string& name, const GroupDomainConfig& cfg)
 }
 
 std::unique_ptr<AbstractDomain> GroupDomain::clone() const {
-    return std::make_unique<GroupDomain>(*this);
+    auto result = std::make_unique<GroupDomain>(group_name, config);
+    result->is_top = is_top;
+    result->is_bottom = is_bottom;
+    result->converged = converged;
+    result->iteration_count = iteration_count;
+    result->state = state;
+    for (const auto& [key, dom] : members) {
+        result->members[key] = dom->clone();
+    }
+    result->dependency_graph = dependency_graph;
+    return result;
 }
 
 bool GroupDomain::isTop() const { return is_top; }
@@ -206,7 +216,10 @@ DomainState GroupDomain::getState() const { return state; }
 void GroupDomain::setState(const DomainState& new_state) { state = new_state; }
 
 llvm::APSInt GroupDomain::getAbstractInteger() const { return llvm::APSInt(); }
-llvm::APFloat GroupDomain::getAbstractFloat() const { return llvm::APFloat(); }
+llvm::APFloat GroupDomain::getAbstractFloat() const { 
+    static llvm::APFloat f(0.0);
+    return f;
+}
 bool GroupDomain::getAbstractBoolean() const { return !members.empty(); }
 
 void GroupDomain::setTop() {

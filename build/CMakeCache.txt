@@ -217,6 +217,9 @@ FFI_LIBRARIES:FILEPATH=/usr/lib/libffi.so
 //Path to a library.
 FFI_STATIC_LIBRARIES:FILEPATH=FFI_STATIC_LIBRARIES-NOTFOUND
 
+//The directory containing a CMake configuration file for GTest.
+GTest_DIR:PATH=/usr/lib/cmake/GTest
+
 //Value Computed by CMake
 Garuda_BINARY_DIR:STATIC=/home/u/codebases/garuda/build
 

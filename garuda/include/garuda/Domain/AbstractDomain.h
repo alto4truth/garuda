@@ -49,6 +49,7 @@ enum class DomainOperator {
     OR,
     XOR,
     NOT,
+    NEG,
     SHL,
     SHR,
     ALLOC,
@@ -133,6 +134,14 @@ public:
     static std::unique_ptr<AbstractDomain> createGroupDomain(const std::string& group_name);
 };
 
+class IntegerDomain;
+class BooleanDomain;
+class PointerDomain;
+class FloatDomain;
+class IntervalDomain;
+class ConstantDomain;
+class GroupDomainImpl;
+
 template<typename DomainImpl>
 class DomainDecorator : public AbstractDomain {
 public:
@@ -154,14 +163,6 @@ public:
         return false;
     }
 };
-
-class IntegerDomain;
-class BooleanDomain;
-class PointerDomain;
-class FloatDomain;
-class IntervalDomain;
-class ConstantDomain;
-class GroupDomainImpl;
 
 }
 

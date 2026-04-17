@@ -1,0 +1,14 @@
+{
+  "name": "garuda",
+  "version": "0.1.0",
+  "description": "Garuda analysis framework",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": ["analysis", "static-analysis"],
+  "license": "MIT"
+}

@@ -1,12 +1,11 @@
-use crate::domains::group_domain::{GroupDomain, GroupDomainConfig};
-use std::collections::HashMap;
+use crate::domains::{DomainFactory, DomainState, DomainType, GroupDomain};
 
 pub struct AnalysisResult {
-    group_domains: HashMap<String, GroupDomain>,
+    group_domains: std::collections::HashMap<String, GroupDomain>,
     violations: Vec<(String, String)>,
     warnings: Vec<(String, String)>,
     notes: Vec<(String, String)>,
-    properties: HashMap<String, String>,
+    properties: std::collections::HashMap<String, String>,
     converged: bool,
     iteration_count: usize,
 }
@@ -14,11 +13,11 @@ pub struct AnalysisResult {
 impl AnalysisResult {
     pub fn new() -> Self {
         Self {
-            group_domains: HashMap::new(),
+            group_domains: std::collections::HashMap::new(),
             violations: Vec::new(),
             warnings: Vec::new(),
             notes: Vec::new(),
-            properties: HashMap::new(),
+            properties: std::collections::HashMap::new(),
             converged: false,
             iteration_count: 0,
         }
@@ -181,14 +180,39 @@ impl Default for GarudaAnalysis {
 }
 
 pub struct GarudaGroupManager {
-    groups: HashMap<String, GroupDomain>,
+    groups: std::collections::HashMap<String, GroupDomain>,
     config: GroupDomainConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct GroupDomainConfig {
+    pub enable_widening: bool,
+    pub enable_narrowing: bool,
+    pub max_iterations: usize,
+    pub widening_delay: usize,
+    pub track_dependencies: bool,
+    pub enable_invariant_checking: bool,
+    pub enable_progress_tracking: bool,
+}
+
+impl Default for GroupDomainConfig {
+    fn default() -> Self {
+        Self {
+            enable_widening: true,
+            enable_narrowing: true,
+            max_iterations: 100,
+            widening_delay: 3,
+            track_dependencies: true,
+            enable_invariant_checking: true,
+            enable_progress_tracking: true,
+        }
+    }
 }
 
 impl GarudaGroupManager {
     pub fn new() -> Self {
         Self {
-            groups: HashMap::new(),
+            groups: std::collections::HashMap::new(),
             config: GroupDomainConfig::default(),
         }
     }

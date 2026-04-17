@@ -1,4 +1,5 @@
 #include "garuda/Domain/IntegerDomain.h"
+#include "garuda/Domain/BooleanDomain.h"
 
 namespace garuda {
 
@@ -87,7 +88,7 @@ void IntegerDomain::print(llvm::raw_ostream& os) const {
 std::string IntegerDomain::toString() const {
     if (is_top) return "TOP";
     if (is_bottom) return "BOTTOM";
-    if (is_singleton()) return "[" + std::to_string(lower_bound) + "]";
+    if (isSingleton()) return "[" + std::to_string(lower_bound) + "]";
     return "[" + std::to_string(lower_bound) + ", " + std::to_string(upper_bound) + "]";
 }
 
@@ -111,12 +112,13 @@ std::vector<const AbstractDomain*> IntegerDomain::getSubdomains() const {
 void IntegerDomain::addSubdomain(std::unique_ptr<AbstractDomain> sub) {}
 
 llvm::APSInt IntegerDomain::getAbstractInteger() const {
-    if (is_singleton()) return llvm::APSInt(lower_bound, true);
+    if (isSingleton()) return llvm::APSInt(lower_bound, true);
     return llvm::APSInt();
 }
 
 llvm::APFloat IntegerDomain::getAbstractFloat() const {
-    return llvm::APFloat();
+    if (isSingleton()) return llvm::APFloat(static_cast<double>(lower_bound));
+    return llvm::APFloat(0.0);
 }
 
 bool IntegerDomain::getAbstractBoolean() const {

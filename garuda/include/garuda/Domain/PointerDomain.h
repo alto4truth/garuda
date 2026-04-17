@@ -11,6 +11,7 @@ public:
     PointerDomain();
     explicit PointerDomain(uint64_t address);
     explicit PointerDomain(const std::string& allocation_site);
+    explicit PointerDomain(uint64_t address, const std::string& alloc_site);
 
     std::unique_ptr<AbstractDomain> clone() const override;
     DomainType getDomainType() const override { return DomainType::POINTER; }

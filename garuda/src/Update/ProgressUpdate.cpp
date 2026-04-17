@@ -42,16 +42,8 @@ void ProgressUpdate::recordIteration(uint64_t iter) {
     iteration = iter;
 }
 
-uint64_t ProgressUpdate::getIteration() const {
-    return iteration;
-}
-
 void ProgressUpdate::recordProgress(double p) {
     progress = std::max(0.0, std::min(1.0, p));
-}
-
-double ProgressUpdate::getProgress() const {
-    return progress;
 }
 
 void ProgressUpdate::addDelta(const ProgressDelta& delta) {
