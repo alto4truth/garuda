@@ -1080,3 +1080,119 @@ pub fn pentagonal_number(n: i64) -> i64 {
 pub fn hexagonal_number(n: i64) -> i64 {
     n * (2 * n - 1)
 }
+
+pub fn modular_inverse(a: i64, m: i64) -> Option<i64> {
+    let mut t = 0i64;
+    let mut new_t = 1i64;
+    let mut r = m;
+    let mut new_r = a;
+    while new_r != 0 {
+        let q = r / new_r;
+        let temp_t = t - q * new_t;
+        t = new_t;
+        new_t = temp_t;
+        let temp_r = r - q * new_r;
+        r = new_r;
+        new_r = temp_r;
+    }
+    if r > 1 {
+        return None;
+    }
+    if t < 0 {
+        Some(t + m)
+    } else {
+        Some(t)
+    }
+}
+pub fn euler_totient(n: i64) -> i64 {
+    if n <= 0 {
+        return 0;
+    }
+    let mut result = n;
+    let mut p = 2;
+    let mut temp = n;
+    while p * p <= temp {
+        if temp % p == 0 {
+            while temp % p == 0 {
+                temp /= p;
+            }
+            result = result / p * (p - 1);
+        }
+        p += 1;
+    }
+    if temp > 1 {
+        result = result / temp * (temp - 1);
+    }
+    result
+}
+pub fn divisor_count(n: i64) -> i64 {
+    if n <= 0 {
+        return 0;
+    }
+    let mut result = 1i64;
+    let mut p = 2;
+    let mut temp = n;
+    while p * p <= temp {
+        if temp % p == 0 {
+            let mut count = 0;
+            while temp % p == 0 {
+                temp /= p;
+                count += 1;
+            }
+            result *= count + 1;
+        }
+        p += 1;
+    }
+    if temp > 1 {
+        result *= 2;
+    }
+    result
+}
+pub fn divisor_sum(n: i64) -> i64 {
+    if n <= 0 {
+        return 0;
+    }
+    let mut result = 0i64;
+    let mut p = 1;
+    while p * p <= n {
+        if n % p == 0 {
+            result += p;
+            if p != n / p {
+                result += n / p;
+            }
+        }
+        p += 1;
+    }
+    result
+}
+pub fn is_perfect(n: i64) -> bool {
+    n > 0 && divisor_sum(n) == 2 * n
+}
+pub fn is_armstrong(n: i64) -> bool {
+    let s = n.to_string();
+    let k = s.len() as i64;
+    let sum: i64 = s
+        .chars()
+        .map(|c| (c.to_digit(10).unwrap() as i64).pow(k as u32))
+        .sum();
+    sum == n
+}
+pub fn is_palindrome(n: i64) -> bool {
+    let s = n.abs().to_string();
+    s == s.chars().rev().collect::<String>()
+}
+pub fn reverse_number(n: i64) -> i64 {
+    let s = n.abs().to_string();
+    s.chars()
+        .rev()
+        .collect::<String>()
+        .parse::<i64>()
+        .unwrap_or(0)
+        * n.signum()
+}
+pub fn is_abundant(n: i64) -> bool {
+    n > 0 && divisor_sum(n) > n
+}
+pub fn is_deficient(n: i64) -> bool {
+    n > 0 && divisor_sum(n) < n
+}
