@@ -621,8 +621,58 @@ pub fn normalize_l1(values: &[f64]) -> Vec<f64> {
 
 pub fn normalize_l2(values: &[f64]) -> Vec<f64> {
     let norm: f64 = values.iter().map(|v| v * v).sum::<f64>().sqrt();
-    if norm == 0.0 {
-        return values.to_vec();
-    }
+    if norm == 0.0 { return values.to_vec(); }
     values.iter().map(|v| v / norm).collect()
+}
+
+pub fn one_hot_encode(index: usize, size: usize) -> Vec<f64> { let mut result = vec![0.0; size]; if index < size { result[index] = 1.0; } result }
+pub fn argmax(values: &[f64]) -> usize { values.iter().enumerate().max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap()).map(|(i, _)| i).unwrap_or(0) }
+pub fn argmin(values: &[f64]) -> usize { values.iter().enumerate().min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap()).map(|(i, _)| i).unwrap_or(0) }
+pub fn top_k(values: &[f64], k: usize) -> Vec<(usize, f64)> { let mut indexed: Vec<_> = values.iter().enumerate().map(|(i, &v)| (i, v)).collect(); indexed.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap()); indexed.into_iter().take(k).collect() }
+pub fn softmax_cross_entropy(probs: &[f64], target: usize) -> f64 { let log_prob = if target < probs.len() { -probs[target].ln() } else { 0.0 }; log_prob }
+pub fn binary_cross_entropy(pred: f64, target: f64) -> f64 { let eps = 1e-15; let p = pred.max(eps).min(1.0 - eps); -target * p.ln() - (1.0 - target) * (1.0 - p).ln() }
+pub fn categorical_cross_entropy(probs: &[f64], target: &[f64]) -> f64 { probs.iter().zip(target.iter()).map(|(p, t)| if *t > 0.0 { -t * p.max(1e-15).ln() } else { 0.0 }).sum() }
+pub fn hinge_loss(pred: f64, target: i32) -> f64 { let y = target as f64; (0.0_f64).max(1.0 - y * pred) }
+pub fn mean_squared_error(pred: &[f64], target: &[f64]) -> f64 { if pred.len() != target.len() { 0.0 } else { pred.iter().zip(target.iter()).map(|(p, t)| (p - t).powi(2)).sum::<f64>() / pred.len() as f64 } }
+pub fn huber_loss(pred: f64, target: f64, delta: f64) -> f64 { let diff = (pred - target).abs(); if diff <= delta { diff * diff / 2.0 } else { delta * (diff - delta / 2.0) } }
+pub fn log_loss(pred: &[f64], target: &[i32]) -> f64 { pred.iter().zip(target.iter()).map(|(p, &t)| binary_cross_entropy(*p, t as f64)).sum::<f64>() / pred.len() as f64 }
+
+pub fn matrix_multiply(a: &[Vec<f64>], b: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    if a.is_empty() || b.is_empty() || a[0].len() != b.len() { return vec![]; }
+    let rows = a.len(); let cols = b[0].len(); let inner = b.len();
+    let mut result = vec![vec![0.0; cols]; rows];
+    for i in 0..rows { for j in 0..cols { for k in 0..inner { result[i][j] += a[i][k] * b[k][j]; } } }
+    result
+}
+
+pub fn matrix_transpose(m: &[Vec<f64>]) -> Vec<Vec<f64>> { if m.is_empty() { vec![] } else { (0..m[0].len()).map(|j| m.iter().map(|row| row[j]).collect()).collect() } }
+pub fn matrix_add(a: &[Vec<f64>], b: &[Vec<f64>]) -> Vec<Vec<f64>> { a.iter().zip(b.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(x, y)| x + y).collect()).collect() }
+pub fn matrix_subtract(a: &[Vec<f64>], b: &[Vec<f64>]) -> Vec<Vec<f64>> { a.iter().zip(b.iter()).map(|(r1, r2)| r1.iter().zip(r2.iter()).map(|(x, y)| x - y).collect()).collect() }
+pub fn matrix_scale(m: &[Vec<f64>], scalar: f64) -> Vec<Vec<f64>> { m.iter().map(|row| row.iter().map(|v| v * scalar).collect()).collect() }
+pub fn matrix_identity(size: usize) -> Vec<Vec<f64>> { (0..size).map(|i| (0..size).map(|j| if i == j { 1.0 } else { 0.0 }).collect()).collect() }
+pub fn matrix_trace(m: &[Vec<f64>]) -> f64 { m.iter().enumerate().map(|(i, row)| row[i]).sum() }
+pub fn matrix_determinant(m: &[Vec<f64>]) -> f64 {
+    let n = m.len(); if n == 0 { return 0.0; } if n == 1 { return m[0][0]; } if n == 2 { return m[0][0] * m[1][1] - m[0][1] * m[1][0]; }
+    let mut det = 0.0;
+    for j in 0..n { let mut sub = Vec::new(); for i in 1..n { let mut row = Vec::new(); for k in 0..n { if k != j { row.push(m[i][k]); } } sub.push(row); } det += m[0][j] * matrix_determinant(&sub) * (if j % 2 == 0 { 1.0 } else { -1.0 }); }
+    det
+}
+
+pub fn matrix_inverse(m: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    let n = m.len(); if n == 0 { return vec![]; }
+    let det = matrix_determinant(m); if det.abs() < 1e-10 { return vec![]; }
+    if n == 1 { return vec![vec![1.0 / m[0][0]]]; }
+    let mut adj = vec![vec![0.0; n]; n];
+    for i in 0..n { for j in 0..n { let mut sub = Vec::new(); for r in 0..n { if r != i { let mut row = Vec::new(); for c in 0..n { if c != j { row.push(m[r][c]); } } sub.push(row); } } adj[j][i] = matrix_determinant(&sub) * (if (i + j) % 2 == 0 { 1.0 } else { -1.0 }); } }
+    matrix_scale(&adj, 1.0 / det)
+}
+
+pub fn matrix_dot(a: &[f64], b: &[f64]) -> f64 { a.iter().zip(b.iter()).map(|(x, y)| x * y).sum() }
+pub fn vector_magnitude(v: &[f64]) -> f64 { v.iter().map(|x| x * x).sum::<f64>().sqrt() }
+pub fn vector_normalize(v: &[f64]) -> Vec<f64> { let mag = vector_magnitude(v); if mag == 0.0 { v.to_vec() } else { v.iter().map(|x| x / mag).collect() } }
+pub fn vector_angle(a: &[f64], b: &[f64]) -> f64 { let dot = matrix_dot(a, b); let mag = vector_magnitude(a) * vector_magnitude(b); if mag == 0.0 { 0.0 } else { (dot / mag).acos() } }
+pub fn vector_project(a: &[f64], b: &[f64]) -> Vec<f64> { let dot = matrix_dot(a, b); let mag_sq = b.iter().map(|x| x * x).sum::<f64>(); if mag_sq == 0.0 { vec![0.0; a.len()] } else { b.iter().map(|x| x * dot / mag_sq).collect() } }
+pub fn vector_cross_3d(a: &[f64], b: &[f64]) -> Vec<f64> { if a.len() < 3 || b.len() < 3 { vec![0.0; 3] } else { vec![a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] } }
+pub fn vector_distance(a: &[f64], b: &[f64]) -> f64 { a.iter().zip(b.iter()).map(|(x, y)| (x - y).powi(2)).sum::<f64>().sqrt() }
+pub fn cosine_similarity(a: &[f64], b: &[f64]) -> f64 { let dot = matrix_dot(a, b); let mag = vector_magnitude(a) * vector_magnitude(b); if mag == 0.0 { 0.0 } else { dot / mag } }
 }
