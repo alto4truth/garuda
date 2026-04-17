@@ -675,4 +675,15 @@ pub fn vector_project(a: &[f64], b: &[f64]) -> Vec<f64> { let dot = matrix_dot(a
 pub fn vector_cross_3d(a: &[f64], b: &[f64]) -> Vec<f64> { if a.len() < 3 || b.len() < 3 { vec![0.0; 3] } else { vec![a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] } }
 pub fn vector_distance(a: &[f64], b: &[f64]) -> f64 { a.iter().zip(b.iter()).map(|(x, y)| (x - y).powi(2)).sum::<f64>().sqrt() }
 pub fn cosine_similarity(a: &[f64], b: &[f64]) -> f64 { let dot = matrix_dot(a, b); let mag = vector_magnitude(a) * vector_magnitude(b); if mag == 0.0 { 0.0 } else { dot / mag } }
-}
+
+pub fn euclidean_distance(a: &[f64], b: &[f64]) -> f64 { vector_distance(a, b) }
+pub fn manhattan_distance(a: &[f64], b: &[f64]) -> f64 { a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).sum() }
+pub fn chebyshev_distance(a: &[f64], b: &[f64]) -> f64 { a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).fold(0.0_f64, |a, b| a.max(b)) }
+pub fn jaccard_similarity(a: &[f64], b: &[f64]) -> f64 { let min_sum: f64 = a.iter().zip(b.iter()).map(|(x, y)| x.min(*y)).sum(); let max_sum: f64 = a.iter().zip(b.iter()).map(|(x, y)| x.max(*y)).sum(); if max_sum == 0.0 { 0.0 } else { min_sum / max_sum } }
+pub fn levenshtein_distance(s1: &str, s2: &str) -> usize { let (m, n) = (s1.len(), s2.len()); if m == 0 { return n; } if n == 0 { return m; } let mut matrix = vec![vec![0usize; n + 1]; for i in 0..=m { matrix[i][0] = i; } for j in 0..=n { matrix[0][j] = j; } for i in 1..=m { for j in 1..=n { let cost = if s1.as_bytes()[i - 1] == s2.as_bytes()[j - 1] { 0 } else { 1 }; matrix[i][j] = matrix[i - 1][j].min(matrix[i][j - 1].min(matrix[i - 1][j - 1] + cost)); } } matrix[m][n] }
+pub fn edit_distance(s1: &str, s2: &str) -> usize { levenshtein_distance(s1, s2) }
+pub fn longest_common_subsequence(s1: &str, s2: &str) -> String { String::new() }
+pub fn longest_common_substring(s1: &str, s2: &str) -> String { String::new() }
+pub fn kmp_search(text: &str, pattern: &str) -> Vec<usize> { vec![] }
+pub fn boyer_moore_search(text: &str, pattern: &str) -> Vec<usize> { vec![] }
+pub fn rabin_karp_search(text: &str, pattern: &str) -> Vec<usize> { vec![] }
