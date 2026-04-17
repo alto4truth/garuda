@@ -82,4 +82,56 @@ pub mod garuda {
             .map(|&v| (v as f64 - min) / (max - min))
             .collect()
     }
+
+    pub fn batch_process(data: &[i64], batch_size: usize) -> Vec<Vec<i64>> {
+        data.chunks(batch_size)
+            .map(|chunk| chunk.to_vec())
+            .collect()
+    }
+
+    pub fn rolling_window(data: &[i64], window: usize) -> Vec<i64> {
+        if data.len() < window || window == 0 {
+            return vec![];
+        }
+        data.windows(window).map(|w| w.iter().sum()).collect()
+    }
+
+    pub fn cumulative_sum(values: &[i64]) -> Vec<i64> {
+        let mut result = Vec::with_capacity(values.len());
+        let mut sum = 0i64;
+        for &v in values {
+            sum += v;
+            result.push(sum);
+        }
+        result
+    }
+
+    pub fn moving_average(data: &[f64], window: usize) -> Vec<f64> {
+        if data.len() < window || window == 0 {
+            return vec![];
+        }
+        let mut result = Vec::with_capacity(data.len() - window + 1);
+        let mut sum: f64 = data[..window].iter().sum();
+        result.push(sum / window as f64);
+        for i in window..data.len() {
+            sum = sum - data[i - window] + data[i];
+            result.push(sum / window as f64);
+        }
+        result
+    }
+
+    pub fn exponential_moving_average(data: &[f64], alpha: f64) -> Vec<f64> {
+        if data.is_empty() || alpha <= 0.0 || alpha >= 1.0 {
+            return vec![];
+        }
+        let mut result = Vec::with_capacity(data.len());
+        if let Some(&first) = data.first() {
+            result.push(first);
+            for &val in &data[1..] {
+                let ema = alpha * val + (1.0 - alpha) * result.last().unwrap();
+                result.push(ema);
+            }
+        }
+        result
+    }
 }
