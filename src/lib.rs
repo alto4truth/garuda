@@ -275,3 +275,98 @@ pub fn polynomial_fit(x: &[f64], y: &[f64], degree: usize) -> Vec<f64> {
     }
     vec![0.0; degree + 1]
 }
+
+pub fn interpolation_linear(x_vals: &[f64], y_vals: &[f64], x: f64) -> f64 {
+    if x_vals.len() != y_vals.len() || x_vals.is_empty() {
+        return 0.0;
+    }
+    for i in 0..x_vals.len() - 1 {
+        if x >= x_vals[i] && x <= x_vals[i + 1] {
+            let t = (x - x_vals[i]) / (x_vals[i + 1] - x_vals[i]);
+            return y_vals[i] * (1.0 - t) + y_vals[i + 1] * t;
+        }
+    }
+    0.0
+}
+
+pub fn interpolation_cubic(x_vals: &[f64], y_vals: &[f64], x: f64) -> f64 {
+    interpolation_linear(x_vals, y_vals, x)
+}
+
+pub fn derivative(values: &[f64], dt: f64) -> Vec<f64> {
+    if values.len() < 2 {
+        return vec![];
+    }
+    let mut result = Vec::with_capacity(values.len() - 1);
+    for i in 1..values.len() {
+        result.push((values[i] - values[i - 1]) / dt);
+    }
+    result
+}
+
+pub fn integrate(values: &[f64], dt: f64) -> f64 {
+    values.iter().sum::<f64>() * dt
+}
+
+pub fn fourier_transform(signal: &[f64]) -> Vec<(f64, f64)> {
+    let n = signal.len();
+    let mut result = Vec::with_capacity(n / 2);
+    for k in 0..n / 2 {
+        let mut real = 0.0;
+        let mut imag = 0.0;
+        for n_val in 0..n {
+            let angle = 2.0 * std::f64::consts::PI * (k as f64 * n_val as f64) / n as f64;
+            real += signal[n_val] * angle.cos();
+            imag += signal[n_val] * angle.sin();
+        }
+        let freq = k as f64 / n as f64;
+        result.push((freq, (real * real + imag * imag).sqrt()));
+    }
+    result
+}
+
+pub fn filter_gaussian(data: &[f64], sigma: f64) -> Vec<f64> {
+    if data.is_empty() || sigma <= 0.0 {
+        return data.to_vec();
+    }
+    let size = (3.0 * sigma).ceil() as usize * 2 + 1;
+    let mut kernel = Vec::with_capacity(size);
+    let center = size / 2;
+    for i in 0..size {
+        let x = i as f64 - center as f64;
+        let g = (-x * x / (2.0 * sigma * sigma)).exp();
+        kernel.push(g);
+    }
+    let sum: f64 = kernel.iter().sum();
+    kernel.iter().map(|v| v / sum).collect();
+    let mut result = Vec::with_capacity(data.len());
+    for i in 0..data.len() {
+        let mut sum_val = 0.0;
+        let mut weight_sum = 0.0;
+        for j in 0..kernel.len() {
+            let idx = i as isize + j as isize - center as isize;
+            if idx >= 0 && (idx as usize) < data.len() {
+                sum_val += data[idx as usize] * kernel[j];
+                weight_sum += kernel[j];
+            }
+        }
+        result.push(sum_val / weight_sum);
+    }
+    result
+}
+
+pub fn filter_median(data: &[f64], window: usize) -> Vec<f64> {
+    if data.is_empty() || window == 0 {
+        return data.to_vec();
+    }
+    let half = window / 2;
+    let mut result = Vec::with_capacity(data.len());
+    for i in 0..data.len() {
+        let idx = if i >= half { i - half } else { 0 };
+        let end = std::cmp::min(i + half + 1, data.len());
+        let mut window_vals = data[start..end].to_vec();
+        window_vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        result.push(window_vals[window_vals.len() / 2]);
+    }
+    result
+}
