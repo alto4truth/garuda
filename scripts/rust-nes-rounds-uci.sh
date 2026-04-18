@@ -20,6 +20,7 @@ CPUCT="${13:-1.35}"
 BO_GAMES="${14:-2}"
 BO_PLIES="${15:-4}"
 BO_MOVETIME_MS="${16:-10}"
+OPENINGS_FILE="${17:-$ROOT_DIR/data/rust-stockfish-openings.fen}"
 
 if [[ ! -x "$SEED_SWEEP" ]]; then
   echo "missing seed sweep at $SEED_SWEEP" >&2
@@ -36,6 +37,8 @@ HISTORY_FILE="$RUN_DIR/history.tsv"
 CURRENT_VECTOR="$RUN_DIR/current.vec"
 BEST_VECTOR="$RUN_DIR/best.vec"
 BEST_RUN_DIR="$RUN_DIR/best.run"
+CONFIG_FILE="$RUN_DIR/config.txt"
+LATEST_ROUND_FILE="$RUN_DIR/latest.round"
 
 if [[ -f "$INPUT_VECTOR" ]]; then
   cp "$INPUT_VECTOR" "$CURRENT_VECTOR"
@@ -43,6 +46,25 @@ else
   cargo build --release --bin garuda-chess >/dev/null
   "$ROOT_DIR/target/release/garuda-chess" model-vector > "$CURRENT_VECTOR"
 fi
+
+cat > "$CONFIG_FILE" <<EOF
+input_vector=$INPUT_VECTOR
+rounds=$ROUNDS
+generations=$GENERATIONS
+population_size=$POPULATION_SIZE
+sigma=$SIGMA
+learning_rate=$LEARNING_RATE
+seeds=$SEEDS
+train_games=$TRAIN_GAMES
+train_plies=$TRAIN_PLIES
+train_movetime_ms=$TRAIN_MOVETIME_MS
+simulations=$SIMULATIONS
+cpuct=$CPUCT
+bo_games=$BO_GAMES
+bo_plies=$BO_PLIES
+bo_movetime_ms=$BO_MOVETIME_MS
+openings_file=$OPENINGS_FILE
+EOF
 
 printf "round\tsummary_file\tbest_seed\tbest_generation\tbest_updated_fitness\tbest_final_fitness\tbest_uci_fitness\tbest_bo_garuda_wins\tbest_bo_uci_wins\tbest_bo_draws\tbest_vector\tbest_run_dir\n" > "$HISTORY_FILE"
 
@@ -53,7 +75,7 @@ for round in $(seq 1 "$ROUNDS"); do
   "$SEED_SWEEP" "$round_dir" "$CURRENT_VECTOR" \
     "$GENERATIONS" "$POPULATION_SIZE" "$SIGMA" "$LEARNING_RATE" "$SEEDS" \
     "$TRAIN_GAMES" "$TRAIN_PLIES" "$TRAIN_MOVETIME_MS" "$SIMULATIONS" "$CPUCT" \
-    "$BO_GAMES" "$BO_PLIES" "$BO_MOVETIME_MS"
+    "$BO_GAMES" "$BO_PLIES" "$BO_MOVETIME_MS" "$OPENINGS_FILE"
 
   echo
   echo "=== round=$round select ==="
@@ -83,12 +105,15 @@ for round in $(seq 1 "$ROUNDS"); do
     "$best_updated_fitness" "$best_final_fitness" "$best_uci_fitness" \
     "$best_bo_garuda_wins" "$best_bo_uci_wins" "$best_bo_draws" \
     "$selected_vector" "${selected_run_dir:-}" >> "$HISTORY_FILE"
+  printf "%s\n" "$round_dir" > "$LATEST_ROUND_FILE"
   echo
 done
 
+echo "config_file=$CONFIG_FILE"
 echo "history_file=$HISTORY_FILE"
 echo "current_vector=$CURRENT_VECTOR"
 echo "best_vector=$BEST_VECTOR"
+echo "latest_round_file=$LATEST_ROUND_FILE"
 if [[ -d "$BEST_RUN_DIR" ]]; then
   echo "best_run_dir=$BEST_RUN_DIR"
 fi
