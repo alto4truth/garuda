@@ -37,8 +37,19 @@ HISTORY_FILE="$RUN_DIR/history.tsv"
 CURRENT_VECTOR="$RUN_DIR/current.vec"
 BEST_VECTOR="$RUN_DIR/best.vec"
 BEST_RUN_DIR="$RUN_DIR/best.run"
+CURRENT_RUN_DIR="$RUN_DIR/current.run"
 CONFIG_FILE="$RUN_DIR/config.txt"
 LATEST_ROUND_FILE="$RUN_DIR/latest.round"
+GLOBAL_BEST_ROUND=""
+GLOBAL_BEST_SEED=""
+GLOBAL_BEST_GENERATION=""
+GLOBAL_BEST_UPDATED_FITNESS=""
+GLOBAL_BEST_FINAL_FITNESS=""
+GLOBAL_BEST_UCI_FITNESS=""
+GLOBAL_BEST_BO_GARUDA_WINS=""
+GLOBAL_BEST_BO_UCI_WINS=""
+GLOBAL_BEST_BO_DRAWS=""
+GLOBAL_BEST_BO_BALANCE=""
 
 if [[ -f "$INPUT_VECTOR" ]]; then
   cp "$INPUT_VECTOR" "$CURRENT_VECTOR"
@@ -66,7 +77,7 @@ bo_movetime_ms=$BO_MOVETIME_MS
 openings_file=$OPENINGS_FILE
 EOF
 
-printf "round\tsummary_file\tbest_seed\tbest_generation\tbest_updated_fitness\tbest_final_fitness\tbest_uci_fitness\tbest_bo_garuda_wins\tbest_bo_uci_wins\tbest_bo_draws\tbest_vector\tbest_run_dir\n" > "$HISTORY_FILE"
+printf "round\tsummary_file\tbest_seed\tbest_generation\tbest_updated_fitness\tbest_final_fitness\tbest_uci_fitness\tbest_bo_garuda_wins\tbest_bo_uci_wins\tbest_bo_draws\tbest_vector\tbest_run_dir\tglobal_best_round\n" > "$HISTORY_FILE"
 
 for round in $(seq 1 "$ROUNDS"); do
   round_dir="$RUN_DIR/round-$(printf '%03d' "$round")"
@@ -94,17 +105,39 @@ for round in $(seq 1 "$ROUNDS"); do
   selected_run_dir="$(printf "%s\n" "$selector_output" | sed -n 's/^output_run_dir=\(.*\)$/\1/p')"
 
   cp "$selected_vector" "$CURRENT_VECTOR"
-  cp "$selected_vector" "$BEST_VECTOR"
-  rm -rf "$BEST_RUN_DIR"
+  rm -rf "$CURRENT_RUN_DIR"
   if [[ -n "$selected_run_dir" && -d "$selected_run_dir" ]]; then
-    cp -R "$selected_run_dir" "$BEST_RUN_DIR"
+    cp -R "$selected_run_dir" "$CURRENT_RUN_DIR"
   fi
 
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+  bo_balance=$((best_bo_garuda_wins - best_bo_uci_wins))
+  if [[ -z "$GLOBAL_BEST_ROUND" ]] \
+    || [[ "$bo_balance" -gt "$GLOBAL_BEST_BO_BALANCE" ]] \
+    || { [[ "$bo_balance" -eq "$GLOBAL_BEST_BO_BALANCE" ]] && [[ "$best_bo_draws" -gt "$GLOBAL_BEST_BO_DRAWS" ]]; } \
+    || { [[ "$bo_balance" -eq "$GLOBAL_BEST_BO_BALANCE" ]] && [[ "$best_bo_draws" -eq "$GLOBAL_BEST_BO_DRAWS" ]] \
+      && awk "BEGIN { exit !($best_uci_fitness > $GLOBAL_BEST_UCI_FITNESS) }"; }; then
+    GLOBAL_BEST_ROUND="$round"
+    GLOBAL_BEST_SEED="$best_seed"
+    GLOBAL_BEST_GENERATION="$best_generation"
+    GLOBAL_BEST_UPDATED_FITNESS="$best_updated_fitness"
+    GLOBAL_BEST_FINAL_FITNESS="$best_final_fitness"
+    GLOBAL_BEST_UCI_FITNESS="$best_uci_fitness"
+    GLOBAL_BEST_BO_GARUDA_WINS="$best_bo_garuda_wins"
+    GLOBAL_BEST_BO_UCI_WINS="$best_bo_uci_wins"
+    GLOBAL_BEST_BO_DRAWS="$best_bo_draws"
+    GLOBAL_BEST_BO_BALANCE="$bo_balance"
+    cp "$selected_vector" "$BEST_VECTOR"
+    rm -rf "$BEST_RUN_DIR"
+    if [[ -n "$selected_run_dir" && -d "$selected_run_dir" ]]; then
+      cp -R "$selected_run_dir" "$BEST_RUN_DIR"
+    fi
+  fi
+
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
     "$round" "$round_dir/summary.tsv" "$best_seed" "$best_generation" \
     "$best_updated_fitness" "$best_final_fitness" "$best_uci_fitness" \
     "$best_bo_garuda_wins" "$best_bo_uci_wins" "$best_bo_draws" \
-    "$selected_vector" "${selected_run_dir:-}" >> "$HISTORY_FILE"
+    "$selected_vector" "${selected_run_dir:-}" "${GLOBAL_BEST_ROUND:-}" >> "$HISTORY_FILE"
   printf "%s\n" "$round_dir" > "$LATEST_ROUND_FILE"
   echo
 done
@@ -112,8 +145,22 @@ done
 echo "config_file=$CONFIG_FILE"
 echo "history_file=$HISTORY_FILE"
 echo "current_vector=$CURRENT_VECTOR"
+if [[ -d "$CURRENT_RUN_DIR" ]]; then
+  echo "current_run_dir=$CURRENT_RUN_DIR"
+fi
 echo "best_vector=$BEST_VECTOR"
 echo "latest_round_file=$LATEST_ROUND_FILE"
 if [[ -d "$BEST_RUN_DIR" ]]; then
   echo "best_run_dir=$BEST_RUN_DIR"
+fi
+if [[ -n "$GLOBAL_BEST_ROUND" ]]; then
+  echo "global_best_round=$GLOBAL_BEST_ROUND"
+  echo "global_best_seed=$GLOBAL_BEST_SEED"
+  echo "global_best_generation=$GLOBAL_BEST_GENERATION"
+  echo "global_best_updated_fitness=$GLOBAL_BEST_UPDATED_FITNESS"
+  echo "global_best_final_fitness=$GLOBAL_BEST_FINAL_FITNESS"
+  echo "global_best_uci_fitness=$GLOBAL_BEST_UCI_FITNESS"
+  echo "global_best_bo_garuda_wins=$GLOBAL_BEST_BO_GARUDA_WINS"
+  echo "global_best_bo_uci_wins=$GLOBAL_BEST_BO_UCI_WINS"
+  echo "global_best_bo_draws=$GLOBAL_BEST_BO_DRAWS"
 fi
