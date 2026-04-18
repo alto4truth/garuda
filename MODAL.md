@@ -3,10 +3,7 @@
 Use `uv`, not `pip`, for the fastest path on a clean machine:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv tool install modal
-modal token new
-modal profile current
+./scripts/modal-setup.sh
 ```
 
 If `modal profile current` prints your active profile, this repo is ready for the next step.
@@ -16,13 +13,19 @@ If `modal profile current` prints your active profile, this repo is ready for th
 Distributed tune from the repo root:
 
 ```bash
-modal run modal_app.py::distributed_tune --population-size 16 --generations 4 --iterations 6 --max-plies 16 --artifact-prefix first-real-run
+ARTIFACT_PREFIX=first-real-run ./scripts/modal-tune.sh
 ```
 
 Evaluate an existing manifest in parallel:
 
 ```bash
-modal run modal_app.py::eval_generation --manifest-path modal-runs/first-real-run/generation-001.manifest.json --iterations 6 --max-plies 16 --artifact-prefix first-real-run
+ARTIFACT_PREFIX=first-real-run ./scripts/modal-eval-manifest.sh modal-runs/first-real-run/generation-001.manifest.json
+```
+
+Override tuning parameters with environment variables:
+
+```bash
+ARTIFACT_PREFIX=large-run POPULATION_SIZE=32 GENERATIONS=8 ITERATIONS=10 MAX_PLIES=24 ./scripts/modal-tune.sh
 ```
 
 **What It Does**
@@ -32,6 +35,9 @@ modal run modal_app.py::eval_generation --manifest-path modal-runs/first-real-ru
 - `distributed_tune()` is the local coordinator that plans generations locally and fans worker jobs out with Modal.
 - run artifacts are written locally under `modal-runs/<artifact-prefix>/`
 - worker result JSON is also written to the Modal volume `garuda-chess-runs` under `/mnt/runs/<artifact-prefix>/`
+- `scripts/modal-setup.sh` installs and authenticates Modal with `uv`
+- `scripts/modal-tune.sh` launches a distributed tuning run
+- `scripts/modal-eval-manifest.sh` fans out evaluation for an existing manifest
 
 **Current Limitation**
 
