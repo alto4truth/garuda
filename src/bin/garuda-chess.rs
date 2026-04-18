@@ -20,6 +20,10 @@ fn print_usage() {
     eprintln!("  garuda-chess status [fen]");
     eprintln!("  garuda-chess match-uci <engine_command> [max_plies_or_0] [movetime_ms] [garuda_color] [garuda_depth] [garuda_quiescence]");
     eprintln!("  garuda-chess bo-uci <engine_command> [games] [max_plies_or_0] [movetime_ms] [garuda_depth] [garuda_quiescence] [openings_file]");
+    eprintln!("  garuda-chess match-uci-mcts <engine_command> [max_plies_or_0] [movetime_ms] [garuda_color] [simulations] [cpuct]");
+    eprintln!("  garuda-chess match-uci-mcts-vector <engine_command> <vector_file> [max_plies_or_0] [movetime_ms] [garuda_color] [simulations] [cpuct]");
+    eprintln!("  garuda-chess bo-uci-mcts <engine_command> [games] [max_plies_or_0] [movetime_ms] [simulations] [cpuct] [openings_file]");
+    eprintln!("  garuda-chess bo-uci-mcts-vector <engine_command> <vector_file> [games] [max_plies_or_0] [movetime_ms] [simulations] [cpuct] [openings_file]");
 }
 
 struct UciEngine {
@@ -223,6 +227,11 @@ fn load_parameter_vector(path: &str) -> Result<Vec<f32>, String> {
     Ok(values)
 }
 
+fn load_model_from_vector_file(path: &str) -> Result<TinyNeuralModel, String> {
+    let vector = load_parameter_vector(path)?;
+    TinyNeuralModel::from_parameter_vector(&vector)
+}
+
 fn chrono_like_utc_date() -> String {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -274,15 +283,18 @@ fn format_pgn_moves(san_moves: &[String], result: &str) -> String {
     tokens.join(" ")
 }
 
-fn play_match_game(
-    engine: &Engine<TinyNeuralModel>,
+fn play_match_game<F>(
+    choose_move: F,
     uci: &mut UciEngine,
     max_plies: Option<usize>,
     movetime_ms: u64,
     garuda_color: garuda::chess::Color,
     emit_moves: bool,
     start_position: &Position,
-) -> Result<(Position, GameStatus, Vec<String>), String> {
+) -> Result<(Position, GameStatus, Vec<String>), String>
+where
+    F: Fn(&Position, &[u64]) -> Option<garuda::chess::ChessMove>,
+{
     let mut position = start_position.clone();
     let mut repetition_history = vec![position.repetition_key()];
     let mut san_moves = Vec::new();
@@ -300,7 +312,7 @@ fn play_match_game(
 
         let side = position.side_to_move();
         let uci_move = if side == garuda_color {
-            match engine.best_move_with_history(&position, &repetition_history) {
+            match choose_move(&position, &repetition_history) {
                 Some(chess_move) => chess_move.uci(),
                 None => break,
             }
@@ -329,6 +341,68 @@ fn play_match_game(
     }
     let final_status = position.game_status_with_history(&repetition_history);
     Ok((position, final_status, san_moves))
+}
+
+fn print_match_pgn(
+    event_name: &str,
+    position: &Position,
+    status: GameStatus,
+    san_moves: &[String],
+    garuda_color: garuda::chess::Color,
+    garuda_name: &str,
+) {
+    println!("result {}", format_status(status));
+    println!("final_fen {}", position.to_fen());
+    let pgn_result = format_pgn_result(status);
+    println!("[Event \"{event_name}\"]");
+    println!("[Site \"?\"]");
+    println!("[Date \"{}\"]", chrono_like_utc_date());
+    println!("[Round \"?\"]");
+    println!(
+        "[White \"{}\"]",
+        if garuda_color == garuda::chess::Color::White {
+            garuda_name
+        } else {
+            "Stockfish"
+        }
+    );
+    println!(
+        "[Black \"{}\"]",
+        if garuda_color == garuda::chess::Color::Black {
+            garuda_name
+        } else {
+            "Stockfish"
+        }
+    );
+    println!("[Result \"{}\"]", pgn_result);
+    println!();
+    println!("{}", format_pgn_moves(san_moves, pgn_result));
+}
+
+fn summarize_bo_result(
+    status: GameStatus,
+    garuda_color: garuda::chess::Color,
+    garuda_wins: &mut usize,
+    uci_wins: &mut usize,
+    draws: &mut usize,
+) -> &'static str {
+    match status {
+        GameStatus::Checkmate { loser } if loser == garuda_color => {
+            *uci_wins += 1;
+            "uci-win"
+        }
+        GameStatus::Checkmate { .. } => {
+            *garuda_wins += 1;
+            "garuda-win"
+        }
+        GameStatus::Stalemate { .. }
+        | GameStatus::DrawByFiftyMoveRule
+        | GameStatus::DrawByRepetition
+        | GameStatus::Ongoing => {
+            *draws += 1;
+            "draw"
+        }
+    }
 }
 
 fn main() {
@@ -677,7 +751,9 @@ fn main() {
             };
             let start_position = Position::starting_position();
             let (position, status, san_moves) = match play_match_game(
-                &engine,
+                |position, repetition_history| {
+                    engine.best_move_with_history(position, repetition_history)
+                },
                 &mut uci,
                 max_plies,
                 movetime_ms,
@@ -691,32 +767,14 @@ fn main() {
                     std::process::exit(3);
                 }
             };
-            println!("result {}", format_status(status));
-            println!("final_fen {}", position.to_fen());
-            let pgn_result = format_pgn_result(status);
-            println!("[Event \"Garuda vs UCI\"]");
-            println!("[Site \"?\"]");
-            println!("[Date \"{}\"]", chrono_like_utc_date());
-            println!("[Round \"?\"]");
-            println!(
-                "[White \"{}\"]",
-                if garuda_color == garuda::chess::Color::White {
-                    "Garuda"
-                } else {
-                    "Stockfish"
-                }
+            print_match_pgn(
+                "Garuda vs UCI",
+                &position,
+                status,
+                &san_moves,
+                garuda_color,
+                "Garuda",
             );
-            println!(
-                "[Black \"{}\"]",
-                if garuda_color == garuda::chess::Color::Black {
-                    "Garuda"
-                } else {
-                    "Stockfish"
-                }
-            );
-            println!("[Result \"{}\"]", pgn_result);
-            println!();
-            println!("{}", format_pgn_moves(&san_moves, pgn_result));
         }
         "bo-uci" => {
             let Some(engine_command) = args.next() else {
@@ -763,7 +821,9 @@ fn main() {
                 };
                 let start_position = &openings[game_index % openings.len()];
                 let (_position, status, _san_moves) = match play_match_game(
-                    &engine,
+                    |position, repetition_history| {
+                        engine.best_move_with_history(position, repetition_history)
+                    },
                     &mut uci,
                     max_plies,
                     movetime_ms,
@@ -777,23 +837,299 @@ fn main() {
                         std::process::exit(3);
                     }
                 };
-                let result = match status {
-                    GameStatus::Checkmate { loser } if loser == garuda_color => {
-                        uci_wins += 1;
-                        "uci-win"
+                let result = summarize_bo_result(
+                    status,
+                    garuda_color,
+                    &mut garuda_wins,
+                    &mut uci_wins,
+                    &mut draws,
+                );
+                println!(
+                    "game {} color {} result {} status {}",
+                    game_index + 1,
+                    garuda_color.fen_symbol(),
+                    result,
+                    format_status(status)
+                );
+            }
+            println!(
+                "summary games={} garuda_wins={} uci_wins={} draws={}",
+                games, garuda_wins, uci_wins, draws
+            );
+        }
+        "match-uci-mcts" => {
+            let Some(engine_command) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let max_plies = parse_optional_plies_arg(args.next(), None);
+            let movetime_ms = parse_u64_arg(args.next(), 50);
+            let garuda_color = match args.next() {
+                Some(text) => match parse_color(&text) {
+                    Ok(color) => color,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(2);
                     }
-                    GameStatus::Checkmate { .. } => {
-                        garuda_wins += 1;
-                        "garuda-win"
+                },
+                None => garuda::chess::Color::White,
+            };
+            let simulations = parse_usize_arg(args.next(), MctsConfig::default().simulations);
+            let cpuct = parse_f32_arg(args.next(), MctsConfig::default().cpuct);
+            let engine = MctsEngine::new(
+                TinyNeuralModel::default(),
+                build_mcts_config(simulations, cpuct),
+            );
+            let mut uci = match UciEngine::spawn(&engine_command) {
+                Ok(uci) => uci,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+            };
+            let start_position = Position::starting_position();
+            let (position, status, san_moves) = match play_match_game(
+                |position, repetition_history| {
+                    engine.best_move_with_history(position, repetition_history)
+                },
+                &mut uci,
+                max_plies,
+                movetime_ms,
+                garuda_color,
+                true,
+                &start_position,
+            ) {
+                Ok(position) => position,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(3);
+                }
+            };
+            print_match_pgn(
+                "Garuda MCTS vs UCI",
+                &position,
+                status,
+                &san_moves,
+                garuda_color,
+                "Garuda MCTS",
+            );
+        }
+        "match-uci-mcts-vector" => {
+            let Some(engine_command) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let Some(vector_file) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let model = match load_model_from_vector_file(&vector_file) {
+                Ok(model) => model,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+            };
+            let max_plies = parse_optional_plies_arg(args.next(), None);
+            let movetime_ms = parse_u64_arg(args.next(), 50);
+            let garuda_color = match args.next() {
+                Some(text) => match parse_color(&text) {
+                    Ok(color) => color,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(2);
                     }
-                    GameStatus::Stalemate { .. }
-                    | GameStatus::DrawByFiftyMoveRule
-                    | GameStatus::DrawByRepetition
-                    | GameStatus::Ongoing => {
-                        draws += 1;
-                        "draw"
+                },
+                None => garuda::chess::Color::White,
+            };
+            let simulations = parse_usize_arg(args.next(), MctsConfig::default().simulations);
+            let cpuct = parse_f32_arg(args.next(), MctsConfig::default().cpuct);
+            let engine = MctsEngine::new(model, build_mcts_config(simulations, cpuct));
+            let mut uci = match UciEngine::spawn(&engine_command) {
+                Ok(uci) => uci,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+            };
+            let start_position = Position::starting_position();
+            let (position, status, san_moves) = match play_match_game(
+                |position, repetition_history| {
+                    engine.best_move_with_history(position, repetition_history)
+                },
+                &mut uci,
+                max_plies,
+                movetime_ms,
+                garuda_color,
+                true,
+                &start_position,
+            ) {
+                Ok(position) => position,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(3);
+                }
+            };
+            print_match_pgn(
+                "Garuda MCTS Vector vs UCI",
+                &position,
+                status,
+                &san_moves,
+                garuda_color,
+                "Garuda MCTS",
+            );
+        }
+        "bo-uci-mcts" => {
+            let Some(engine_command) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let games = parse_usize_arg(args.next(), 10);
+            let max_plies = parse_optional_plies_arg(args.next(), None);
+            let movetime_ms = parse_u64_arg(args.next(), 50);
+            let simulations = parse_usize_arg(args.next(), MctsConfig::default().simulations);
+            let cpuct = parse_f32_arg(args.next(), MctsConfig::default().cpuct);
+            let openings = match args.next() {
+                Some(path) => match load_openings(&path) {
+                    Ok(openings) => openings,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                },
+                None => vec![Position::starting_position()],
+            };
+            let engine = MctsEngine::new(
+                TinyNeuralModel::default(),
+                build_mcts_config(simulations, cpuct),
+            );
+            let mut uci = match UciEngine::spawn(&engine_command) {
+                Ok(uci) => uci,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+            };
+            let mut garuda_wins = 0usize;
+            let mut uci_wins = 0usize;
+            let mut draws = 0usize;
+            for game_index in 0..games {
+                let garuda_color = if game_index % 2 == 0 {
+                    garuda::chess::Color::White
+                } else {
+                    garuda::chess::Color::Black
+                };
+                let start_position = &openings[game_index % openings.len()];
+                let (_position, status, _san_moves) = match play_match_game(
+                    |position, repetition_history| {
+                        engine.best_move_with_history(position, repetition_history)
+                    },
+                    &mut uci,
+                    max_plies,
+                    movetime_ms,
+                    garuda_color,
+                    false,
+                    start_position,
+                ) {
+                    Ok(position) => position,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(3);
                     }
                 };
+                let result = summarize_bo_result(
+                    status,
+                    garuda_color,
+                    &mut garuda_wins,
+                    &mut uci_wins,
+                    &mut draws,
+                );
+                println!(
+                    "game {} color {} result {} status {}",
+                    game_index + 1,
+                    garuda_color.fen_symbol(),
+                    result,
+                    format_status(status)
+                );
+            }
+            println!(
+                "summary games={} garuda_wins={} uci_wins={} draws={}",
+                games, garuda_wins, uci_wins, draws
+            );
+        }
+        "bo-uci-mcts-vector" => {
+            let Some(engine_command) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let Some(vector_file) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let model = match load_model_from_vector_file(&vector_file) {
+                Ok(model) => model,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+            };
+            let games = parse_usize_arg(args.next(), 10);
+            let max_plies = parse_optional_plies_arg(args.next(), None);
+            let movetime_ms = parse_u64_arg(args.next(), 50);
+            let simulations = parse_usize_arg(args.next(), MctsConfig::default().simulations);
+            let cpuct = parse_f32_arg(args.next(), MctsConfig::default().cpuct);
+            let openings = match args.next() {
+                Some(path) => match load_openings(&path) {
+                    Ok(openings) => openings,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                },
+                None => vec![Position::starting_position()],
+            };
+            let engine = MctsEngine::new(model, build_mcts_config(simulations, cpuct));
+            let mut uci = match UciEngine::spawn(&engine_command) {
+                Ok(uci) => uci,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+            };
+            let mut garuda_wins = 0usize;
+            let mut uci_wins = 0usize;
+            let mut draws = 0usize;
+            for game_index in 0..games {
+                let garuda_color = if game_index % 2 == 0 {
+                    garuda::chess::Color::White
+                } else {
+                    garuda::chess::Color::Black
+                };
+                let start_position = &openings[game_index % openings.len()];
+                let (_position, status, _san_moves) = match play_match_game(
+                    |position, repetition_history| {
+                        engine.best_move_with_history(position, repetition_history)
+                    },
+                    &mut uci,
+                    max_plies,
+                    movetime_ms,
+                    garuda_color,
+                    false,
+                    start_position,
+                ) {
+                    Ok(position) => position,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(3);
+                    }
+                };
+                let result = summarize_bo_result(
+                    status,
+                    garuda_color,
+                    &mut garuda_wins,
+                    &mut uci_wins,
+                    &mut draws,
+                );
                 println!(
                     "game {} color {} result {} status {}",
                     game_index + 1,
