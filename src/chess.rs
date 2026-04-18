@@ -1255,20 +1255,29 @@ impl<M: PolicyValueModel> Engine<M> {
             return None;
         }
 
-        let mut best_move = None;
-        let mut best_score = f32::NEG_INFINITY;
-        let mut alpha = f32::NEG_INFINITY;
-        let beta = f32::INFINITY;
-        for chess_move in moves {
-            let child = position.apply_move(&chess_move);
-            let score = -self.negamax(&child, self.config.max_depth.saturating_sub(1), -beta, -alpha);
-            if score > best_score {
-                best_score = score;
-                best_move = Some(chess_move);
+        self.table.borrow_mut().clear();
+
+        let mut principal_move = moves.first().cloned();
+        for search_depth in 1..=self.config.max_depth.max(1) {
+            let mut best_move = None;
+            let mut best_score = f32::NEG_INFINITY;
+            let mut alpha = f32::NEG_INFINITY;
+            let beta = f32::INFINITY;
+            let root_moves = self.ordered_root_moves(position, principal_move.clone());
+            for chess_move in root_moves {
+                let child = position.apply_move(&chess_move);
+                let score = -self.negamax(&child, search_depth.saturating_sub(1), -beta, -alpha);
+                if score > best_score {
+                    best_score = score;
+                    best_move = Some(chess_move);
+                }
+                alpha = alpha.max(score);
             }
-            alpha = alpha.max(score);
+            if best_move.is_some() {
+                principal_move = best_move;
+            }
         }
-        best_move
+        principal_move
     }
 
     fn ordered_moves(&self, position: &Position) -> Vec<ChessMove> {
@@ -1291,6 +1300,16 @@ impl<M: PolicyValueModel> Engine<M> {
             .collect();
         scored_moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         scored_moves.into_iter().map(|(chess_move, _)| chess_move).collect()
+    }
+
+    fn ordered_root_moves(&self, position: &Position, principal_move: Option<ChessMove>) -> Vec<ChessMove> {
+        let mut moves = self.ordered_moves(position);
+        if let Some(principal_move) = principal_move {
+            if let Some(index) = moves.iter().position(|chess_move| *chess_move == principal_move) {
+                moves.swap(0, index);
+            }
+        }
+        moves
     }
 
     fn negamax(&self, position: &Position, depth: usize, mut alpha: f32, beta: f32) -> f32 {
