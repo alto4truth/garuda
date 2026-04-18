@@ -833,6 +833,12 @@ impl Position {
             (white_moves - black_moves) * 2.0
         };
 
+        let pawn_structure_score =
+            self.pawn_structure_score(Color::White) - self.pawn_structure_score(Color::Black);
+
+        let piece_coordination_score = self.piece_coordination_score(Color::White)
+            - self.piece_coordination_score(Color::Black);
+
         let tactical_vulnerability_score = self
             .iter_pieces()
             .map(|(square, piece)| {
@@ -876,12 +882,106 @@ impl Position {
         let signed_score = material_score
             + piece_square_score
             + mobility_score
+            + pawn_structure_score
+            + piece_coordination_score
             + tactical_vulnerability_score
             + king_safety_score;
         match self.side_to_move {
             Color::White => signed_score,
             Color::Black => -signed_score,
         }
+    }
+
+    fn pawn_structure_score(&self, color: Color) -> f32 {
+        let pawn_files = self.pawn_file_counts(color);
+        let mut score = 0.0;
+        for file in 0..8 {
+            let pawns_on_file = pawn_files[file];
+            if pawns_on_file > 1 {
+                score -= (pawns_on_file as f32 - 1.0) * 18.0;
+            }
+            if pawns_on_file > 0 {
+                let left_support = file > 0 && pawn_files[file - 1] > 0;
+                let right_support = file < 7 && pawn_files[file + 1] > 0;
+                if !left_support && !right_support {
+                    score -= pawns_on_file as f32 * 14.0;
+                }
+            }
+        }
+
+        for (square, piece) in self.iter_pieces() {
+            if piece.color != color || piece.kind != PieceKind::Pawn {
+                continue;
+            }
+            if self.is_passed_pawn(square, color) {
+                let advancement = match color {
+                    Color::White => square.rank() as f32,
+                    Color::Black => (7 - square.rank()) as f32,
+                };
+                score += 12.0 + advancement * 10.0;
+            }
+        }
+
+        score
+    }
+
+    fn piece_coordination_score(&self, color: Color) -> f32 {
+        let bishop_count = self
+            .iter_pieces()
+            .filter(|(_, piece)| piece.color == color && piece.kind == PieceKind::Bishop)
+            .count();
+        let bishop_pair_bonus = if bishop_count >= 2 { 28.0 } else { 0.0 };
+
+        let own_pawn_files = self.pawn_file_counts(color);
+        let enemy_pawn_files = self.pawn_file_counts(color.opposite());
+        let rook_file_bonus = self
+            .iter_pieces()
+            .filter(|(_, piece)| piece.color == color && piece.kind == PieceKind::Rook)
+            .map(|(square, _)| {
+                let file = square.file() as usize;
+                let own_pawns = own_pawn_files[file];
+                let enemy_pawns = enemy_pawn_files[file];
+                if own_pawns == 0 && enemy_pawns == 0 {
+                    18.0
+                } else if own_pawns == 0 {
+                    10.0
+                } else {
+                    0.0
+                }
+            })
+            .sum::<f32>();
+
+        bishop_pair_bonus + rook_file_bonus
+    }
+
+    fn pawn_file_counts(&self, color: Color) -> [u8; 8] {
+        let mut counts = [0u8; 8];
+        for (square, piece) in self.iter_pieces() {
+            if piece.color == color && piece.kind == PieceKind::Pawn {
+                counts[square.file() as usize] = counts[square.file() as usize].saturating_add(1);
+            }
+        }
+        counts
+    }
+
+    fn is_passed_pawn(&self, square: Square, color: Color) -> bool {
+        for (candidate_square, piece) in self.iter_pieces() {
+            if piece.color != color.opposite() || piece.kind != PieceKind::Pawn {
+                continue;
+            }
+            let file_distance = (candidate_square.file() as i8 - square.file() as i8).abs();
+            if file_distance > 1 {
+                continue;
+            }
+            let blocks_path = match color {
+                Color::White => candidate_square.rank() >= square.rank(),
+                Color::Black => candidate_square.rank() <= square.rank(),
+            };
+            if blocks_path {
+                return false;
+            }
+        }
+        true
     }
 
     fn clone_for_side(&self, side_to_move: Color) -> Self {
@@ -1621,6 +1721,20 @@ mod tests {
         let hanging = Position::from_fen("4k3/8/8/8/4r3/8/4Q3/4K3 w - - 0 1").unwrap();
         let safe = Position::from_fen("4k3/8/8/8/8/8/4Q3/4K3 w - - 0 1").unwrap();
         assert!(safe.static_eval() > hanging.static_eval());
+    }
+
+    #[test]
+    fn static_eval_rewards_passed_pawn() {
+        let passed = Position::from_fen("4k3/8/8/3P4/8/8/8/4K3 w - - 0 1").unwrap();
+        let blocked = Position::from_fen("4k3/3p4/8/3P4/8/8/8/4K3 w - - 0 1").unwrap();
+        assert!(passed.static_eval() > blocked.static_eval());
+    }
+
+    #[test]
+    fn static_eval_rewards_bishop_pair() {
+        let bishop_pair = Position::from_fen("4k3/8/8/8/8/8/3BB3/4K3 w - - 0 1").unwrap();
+        let bishop_and_knight = Position::from_fen("4k3/8/8/8/8/8/3BN3/4K3 w - - 0 1").unwrap();
+        assert!(bishop_pair.static_eval() > bishop_and_knight.static_eval());
     }
 
     #[test]
