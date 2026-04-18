@@ -7,8 +7,8 @@ fn print_usage() {
     eprintln!("  garuda-chess bestmove [fen] [garuda_depth] [garuda_quiescence]");
     eprintln!("  garuda-chess apply <fen> <uci>");
     eprintln!("  garuda-chess status [fen]");
-    eprintln!("  garuda-chess match-uci <engine_path> [plies] [movetime_ms] [garuda_color] [garuda_depth] [garuda_quiescence]");
-    eprintln!("  garuda-chess bo-uci <engine_path> [games] [plies] [movetime_ms] [garuda_depth] [garuda_quiescence]");
+    eprintln!("  garuda-chess match-uci <engine_command> [plies] [movetime_ms] [garuda_color] [garuda_depth] [garuda_quiescence]");
+    eprintln!("  garuda-chess bo-uci <engine_command> [games] [plies] [movetime_ms] [garuda_depth] [garuda_quiescence]");
 }
 
 struct UciEngine {
@@ -18,12 +18,22 @@ struct UciEngine {
 }
 
 impl UciEngine {
-    fn spawn(engine_path: &str) -> Result<Self, String> {
-        let mut child = Command::new(engine_path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .map_err(|error| format!("failed to launch engine: {error}"))?;
+    fn spawn(engine_command: &str) -> Result<Self, String> {
+        let mut child = if engine_command.contains(' ') {
+            Command::new("sh")
+                .arg("-lc")
+                .arg(engine_command)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .map_err(|error| format!("failed to launch engine command: {error}"))?
+        } else {
+            Command::new(engine_command)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .map_err(|error| format!("failed to launch engine: {error}"))?
+        };
         let stdin = child
             .stdin
             .take()
@@ -241,7 +251,7 @@ fn main() {
             }
         }
         "match-uci" => {
-            let Some(engine_path) = args.next() else {
+            let Some(engine_command) = args.next() else {
                 print_usage();
                 std::process::exit(1);
             };
@@ -265,7 +275,7 @@ fn main() {
                 TinyNeuralModel::default(),
                 build_search_config(garuda_depth, garuda_quiescence),
             );
-            let mut uci = match UciEngine::spawn(&engine_path) {
+            let mut uci = match UciEngine::spawn(&engine_command) {
                 Ok(uci) => uci,
                 Err(error) => {
                     eprintln!("{error}");
@@ -283,7 +293,7 @@ fn main() {
             println!("final_fen {}", position.to_fen());
         }
         "bo-uci" => {
-            let Some(engine_path) = args.next() else {
+            let Some(engine_command) = args.next() else {
                 print_usage();
                 std::process::exit(1);
             };
@@ -298,7 +308,7 @@ fn main() {
                 TinyNeuralModel::default(),
                 build_search_config(garuda_depth, garuda_quiescence),
             );
-            let mut uci = match UciEngine::spawn(&engine_path) {
+            let mut uci = match UciEngine::spawn(&engine_command) {
                 Ok(uci) => uci,
                 Err(error) => {
                     eprintln!("{error}");
