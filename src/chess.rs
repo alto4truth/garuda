@@ -1595,10 +1595,10 @@ impl<M: PolicyValueModel> Engine<M> {
     }
 
     fn move_ordering_bonus(&self, position: &Position, chess_move: &ChessMove) -> f32 {
-        let moving_piece = position
-            .piece_at(chess_move.from)
-            .map(|piece| piece.kind.centipawn_value())
-            .unwrap_or(0.0);
+        let Some(moving_piece) = position.piece_at(chess_move.from) else {
+            return 0.0;
+        };
+        let moving_piece_value = moving_piece.kind.centipawn_value();
         let capture_square = if position.en_passant_target == Some(chess_move.to)
             && position.piece_at(chess_move.to).is_none()
             && chess_move.from.file() != chess_move.to.file()
@@ -1609,18 +1609,51 @@ impl<M: PolicyValueModel> Engine<M> {
         };
         let capture_bonus = position
             .piece_at(capture_square)
-            .map(|piece| piece.kind.centipawn_value() - (moving_piece * 0.1))
+            .map(|piece| piece.kind.centipawn_value() - (moving_piece_value * 0.1))
             .unwrap_or(0.0);
         let promotion_bonus = chess_move
             .promotion
             .map(|promotion| promotion.centipawn_value())
             .unwrap_or(0.0);
-        let check_bonus = if position.apply_move(chess_move).is_in_check(position.side_to_move().opposite()) {
+        let after_position = position.apply_move(chess_move);
+        let check_bonus = if after_position.is_in_check(position.side_to_move().opposite()) {
             75.0
         } else {
             0.0
         };
-        capture_bonus + promotion_bonus + check_bonus
+        let tactical_safety_bonus =
+            self.tactical_move_safety_bonus(position, &after_position, chess_move, moving_piece);
+        capture_bonus + promotion_bonus + check_bonus + tactical_safety_bonus
+    }
+
+    fn tactical_move_safety_bonus(
+        &self,
+        position: &Position,
+        after_position: &Position,
+        chess_move: &ChessMove,
+        moving_piece: Piece,
+    ) -> f32 {
+        let own_color = moving_piece.color;
+        let enemy_color = own_color.opposite();
+        let moving_piece_value = moving_piece.kind.centipawn_value();
+
+        let was_attacked = position.is_square_attacked(chess_move.from, enemy_color);
+        let was_defended = position.is_square_attacked(chess_move.from, own_color);
+        let escapes_hanging_piece = was_attacked && !was_defended;
+
+        let is_attacked_after = after_position.is_square_attacked(chess_move.to, enemy_color);
+        let is_defended_after = after_position.is_square_attacked(chess_move.to, own_color);
+
+        let mut bonus = 0.0;
+        if escapes_hanging_piece && (!is_attacked_after || is_defended_after) {
+            bonus += moving_piece_value * 0.18;
+        }
+        if is_attacked_after && !is_defended_after {
+            bonus -= moving_piece_value * 0.40;
+        } else if is_attacked_after {
+            bonus -= moving_piece_value * 0.08;
+        }
+        bonus
     }
 
     fn ordered_tactical_moves(&self, position: &Position) -> Vec<ChessMove> {
@@ -1735,6 +1768,18 @@ mod tests {
         let bishop_pair = Position::from_fen("4k3/8/8/8/8/8/3BB3/4K3 w - - 0 1").unwrap();
         let bishop_and_knight = Position::from_fen("4k3/8/8/8/8/8/3BN3/4K3 w - - 0 1").unwrap();
         assert!(bishop_pair.static_eval() > bishop_and_knight.static_eval());
+    }
+
+    #[test]
+    fn move_ordering_rewards_escaping_hanging_queen() {
+        let position = Position::from_fen("4k3/8/8/8/4r3/8/4Q3/4K3 w - - 0 1").unwrap();
+        let engine = Engine::new(TinyNeuralModel::default(), SearchConfig::default());
+        let safe_move = ChessMove::from_uci("e2f2").unwrap();
+        let blunder_move = ChessMove::from_uci("e2e3").unwrap();
+        assert!(
+            engine.move_ordering_bonus(&position, &safe_move)
+                > engine.move_ordering_bonus(&position, &blunder_move)
+        );
     }
 
     #[test]
