@@ -8,6 +8,7 @@ fn print_usage() {
     eprintln!("  garuda-chess apply <fen> <uci>");
     eprintln!("  garuda-chess status [fen]");
     eprintln!("  garuda-chess match-uci <engine_path> [plies] [movetime_ms] [garuda_color]");
+    eprintln!("  garuda-chess bo-uci <engine_path> [games] [plies] [movetime_ms]");
 }
 
 struct UciEngine {
@@ -117,6 +118,41 @@ fn format_status(status: GameStatus) -> &'static str {
     }
 }
 
+fn play_match_game(
+    engine: &Engine<TinyNeuralModel>,
+    uci: &mut UciEngine,
+    plies: usize,
+    movetime_ms: u64,
+    garuda_color: garuda::chess::Color,
+    emit_moves: bool,
+) -> Result<Position, String> {
+    let mut position = Position::starting_position();
+    for ply in 0..plies {
+        if position.game_status() != GameStatus::Ongoing {
+            break;
+        }
+
+        let side = position.side_to_move();
+        let uci_move = if side == garuda_color {
+            match engine.best_move(&position) {
+                Some(chess_move) => chess_move.uci(),
+                None => break,
+            }
+        } else {
+            uci.bestmove(&position, movetime_ms)?
+        };
+
+        if emit_moves {
+            println!("ply {} {} {}", ply + 1, side.fen_symbol(), uci_move);
+        }
+        let Some(next) = position.apply_uci_move(&uci_move) else {
+            return Err(format!("illegal move from engine: {uci_move}"));
+        };
+        position = next;
+    }
+    Ok(position)
+}
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let Some(command) = args.next() else {
@@ -214,37 +250,93 @@ fn main() {
                     std::process::exit(2);
                 }
             };
-            let mut position = Position::starting_position();
-            for ply in 0..plies {
-                if position.game_status() != GameStatus::Ongoing {
-                    break;
+            let position = match play_match_game(&engine, &mut uci, plies, movetime_ms, garuda_color, true) {
+                Ok(position) => position,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(3);
                 }
-
-                let side = position.side_to_move();
-                let uci_move = if side == garuda_color {
-                    match engine.best_move(&position) {
-                        Some(chess_move) => chess_move.uci(),
-                        None => break,
-                    }
-                } else {
-                    match uci.bestmove(&position, movetime_ms) {
-                        Ok(bestmove) => bestmove,
-                        Err(error) => {
-                            eprintln!("{error}");
-                            std::process::exit(3);
-                        }
-                    }
-                };
-
-                println!("ply {} {} {}", ply + 1, side.fen_symbol(), uci_move);
-                let Some(next) = position.apply_uci_move(&uci_move) else {
-                    eprintln!("illegal move from engine: {uci_move}");
-                    std::process::exit(4);
-                };
-                position = next;
-            }
+            };
             println!("result {}", format_status(position.game_status()));
             println!("final_fen {}", position.to_fen());
+        }
+        "bo-uci" => {
+            let Some(engine_path) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let games = args
+                .next()
+                .and_then(|text| text.parse::<usize>().ok())
+                .unwrap_or(10);
+            let plies = args
+                .next()
+                .and_then(|text| text.parse::<usize>().ok())
+                .unwrap_or(80);
+            let movetime_ms = args
+                .next()
+                .and_then(|text| text.parse::<u64>().ok())
+                .unwrap_or(50);
+
+            let engine = Engine::new(TinyNeuralModel::default(), SearchConfig::default());
+            let mut uci = match UciEngine::spawn(&engine_path) {
+                Ok(uci) => uci,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+            };
+
+            let mut garuda_wins = 0usize;
+            let mut uci_wins = 0usize;
+            let mut draws = 0usize;
+            for game_index in 0..games {
+                let garuda_color = if game_index % 2 == 0 {
+                    garuda::chess::Color::White
+                } else {
+                    garuda::chess::Color::Black
+                };
+                let position = match play_match_game(
+                    &engine,
+                    &mut uci,
+                    plies,
+                    movetime_ms,
+                    garuda_color,
+                    false,
+                ) {
+                    Ok(position) => position,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(3);
+                    }
+                };
+                let status = position.game_status();
+                let result = match status {
+                    GameStatus::Checkmate { loser } if loser == garuda_color => {
+                        uci_wins += 1;
+                        "uci-win"
+                    }
+                    GameStatus::Checkmate { .. } => {
+                        garuda_wins += 1;
+                        "garuda-win"
+                    }
+                    GameStatus::Stalemate { .. } | GameStatus::Ongoing => {
+                        draws += 1;
+                        "draw"
+                    }
+                };
+                println!(
+                    "game {} color {} result {} status {}",
+                    game_index + 1,
+                    garuda_color.fen_symbol(),
+                    result,
+                    format_status(status)
+                );
+            }
+            println!(
+                "summary games={} garuda_wins={} uci_wins={} draws={}",
+                games, garuda_wins, uci_wins, draws
+            );
         }
         _ => {
             print_usage();
