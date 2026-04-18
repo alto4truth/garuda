@@ -15,6 +15,7 @@
     "chess:dist:tune": "node js/src/chess/cli.js dist:tune",
     "chess:distill:data": "node js/src/chess/cli.js distill:data",
     "chess:distill:train": "node js/src/chess/cli.js distill:train",
+    "chess:distill:benchmark": "node js/src/chess/cli.js distill:benchmark",
     "test": "node js/src/tests/all.test.js",
     "lint": "eslint src --ext .ts"
   },

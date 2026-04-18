@@ -18,6 +18,7 @@ const {
   writeJsonFile,
 } = require('./distributed');
 const {
+  benchmarkDistilledModel,
   buildStockfishDataset,
   distillAgainstStockfish,
 } = require('./distill');
@@ -220,6 +221,21 @@ async function main() {
       emitJson(result, args.out);
       break;
     }
+    case 'distill:benchmark': {
+      const result = await benchmarkDistilledModel({
+        epochs: parseNumber(args.epochs, 4),
+        learningRate: parseNumber(args.learningRate, 0.01),
+        teacherPlies: parseNumber(args.teacherPlies, 8),
+        maxPlies: parseNumber(args.maxPlies, 80),
+        stockfishDepth: parseNumber(args.stockfishDepth, 4),
+        stockfishFlavor: args.stockfishFlavor || 'lite-single',
+        mctsIterations: parseNumber(args.iterations, 64),
+        mctsColor: args.color || 'w',
+        verbose: args.verbose === 'true' || args.verbose === true,
+      });
+      emitJson(result, args.out);
+      break;
+    }
     default:
       console.log(`Usage:
   node js/src/chess/cli.js vector
@@ -232,6 +248,7 @@ async function main() {
   node js/src/chess/cli.js dist:tune [--fitness mixed|selfplay|tactical] [--populationSize N] [--generations N]
   node js/src/chess/cli.js distill:data [--stockfishDepth N] [--teacherPlies N]
   node js/src/chess/cli.js distill:train [--stockfishDepth N] [--teacherPlies N] [--epochs N] [--learningRate X]
+  node js/src/chess/cli.js distill:benchmark [--stockfishDepth N] [--teacherPlies N] [--epochs N] [--learningRate X] [--iterations N] [--maxPlies N]
 `);
   }
 }

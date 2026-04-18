@@ -1,5 +1,9 @@
 const { Chess } = require('chess.js');
-const { createStockfishSession, TinyNeuralPolicyValueModel } = require('./mcts-stockfish');
+const {
+  createStockfishSession,
+  playVsStockfish,
+  TinyNeuralPolicyValueModel,
+} = require('./mcts-stockfish');
 
 function normalizeScore(score) {
   return Math.tanh(score / 600);
@@ -104,8 +108,38 @@ async function distillAgainstStockfish(options = {}) {
   };
 }
 
+async function benchmarkDistilledModel(options = {}) {
+  const distilled = await distillAgainstStockfish(options);
+  const model = new TinyNeuralPolicyValueModel({
+    parameterVector: distilled.vector,
+  });
+  const benchmark = await playVsStockfish({
+    model,
+    mctsColor: options.mctsColor || 'w',
+    mctsIterations: options.mctsIterations || 64,
+    stockfishDepth: options.stockfishDepth || 4,
+    stockfishFlavor: options.stockfishFlavor || 'lite-single',
+    stockfishMoveTime: options.stockfishMoveTime || null,
+    maxPlies: options.maxPlies || 80,
+    verbose: options.verbose ?? false,
+  });
+
+  return {
+    ...distilled,
+    benchmark: {
+      totalPlies: benchmark.totalPlies,
+      survivalMoves: benchmark.survivalMoves,
+      resultText: benchmark.resultText,
+      mctsLost: benchmark.mctsLost,
+      finalFen: benchmark.game.fen(),
+      pgn: benchmark.game.pgn(),
+    },
+  };
+}
+
 module.exports = {
   analyzePosition,
+  benchmarkDistilledModel,
   buildStockfishDataset,
   distillAgainstStockfish,
   parseStockfishScoreLine,

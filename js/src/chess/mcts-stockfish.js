@@ -4,6 +4,8 @@
  */
 
 const { Chess } = require('chess.js');
+const fs = require('fs');
+const path = require('path');
 const { TinyNeuralPolicyValueModel } = require('./neural-model');
 
 const PIECE_VALUES = {
@@ -680,8 +682,62 @@ function parseBestMove(line) {
 }
 
 async function createStockfishSession(flavor = 'lite-single', depth = 8) {
-  const initStockfish = require('stockfish');
-  const engine = await initStockfish(flavor);
+  const stockfishPkg = require('stockfish/package.json');
+  const buildVersion = stockfishPkg.buildVersion || '18';
+  const flavorMap = {
+    full: `stockfish-${buildVersion}.js`,
+    lite: `stockfish-${buildVersion}-lite.js`,
+    single: `stockfish-${buildVersion}-single.js`,
+    'lite-single': `stockfish-${buildVersion}-lite-single.js`,
+    'single-lite': `stockfish-${buildVersion}-lite-single.js`,
+    asm: `stockfish-${buildVersion}-asm.js`,
+  };
+  const filename = flavorMap[flavor] || flavorMap['lite-single'];
+  const enginePath = path.resolve(path.dirname(require.resolve('stockfish')), 'bin', filename);
+  const wasmPath = enginePath.replace(/\.js$/i, '.wasm');
+  const initEngine = require(enginePath);
+  const engine = {
+    locateFile: (requestedPath) => {
+      if (requestedPath.includes('.wasm')) {
+        return requestedPath.includes('.wasm.map') ? `${wasmPath}.map` : wasmPath;
+      }
+      return enginePath;
+    },
+  };
+  if (fs.existsSync(wasmPath)) {
+    engine.wasmBinary = fs.readFileSync(wasmPath);
+  }
+  if (typeof initEngine !== 'function') {
+    throw new Error(`Unsupported Stockfish engine loader for ${filename}`);
+  }
+  let bootResult = null;
+  try {
+    bootResult = initEngine(engine);
+  } catch (error) {
+    bootResult = null;
+  }
+  if (typeof bootResult === 'function') {
+    bootResult = bootResult(engine);
+  } else if (!bootResult) {
+    const stage2 = initEngine();
+    if (typeof stage2 === 'function') {
+      bootResult = stage2(engine);
+    } else {
+      bootResult = stage2;
+    }
+  }
+  await Promise.resolve(bootResult);
+  if (typeof engine._isReady === 'function') {
+    while (!engine._isReady()) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    delete engine._isReady;
+  }
+  engine.sendCommand = (command) => {
+    setImmediate(() => {
+      engine.ccall('command', null, ['string'], [command], { async: /^go\b/.test(command) });
+    });
+  };
   const session = new StockfishSession(engine, flavor);
   await session.initialize(depth);
   return session;
@@ -723,10 +779,11 @@ async function playVsStockfish(options = {}) {
     stockfishMoveTime = null,
     maxPlies = 160,
     verbose = true,
+    model = null,
   } = options;
 
   const game = new Chess();
-  const mcts = new MCTSEngine();
+  const mcts = new MCTSEngine(model ? { model } : {});
   const stockfish = await createStockfishSession(stockfishFlavor, stockfishDepth);
   const moves = [];
 
