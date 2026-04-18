@@ -601,9 +601,20 @@ impl Position {
     pub fn apply_move(&self, chess_move: &ChessMove) -> Self {
         let mut next = self.clone();
         let moving_piece = next.piece_at(chess_move.from);
-        let captured_piece = next.piece_at(chess_move.to);
+        let mut captured_piece = next.piece_at(chess_move.to);
         next.set_piece(chess_move.from, None);
         if let Some(mut piece) = moving_piece {
+            if matches!(piece.kind, PieceKind::Pawn)
+                && self.en_passant_target == Some(chess_move.to)
+                && captured_piece.is_none()
+                && chess_move.from.file() != chess_move.to.file()
+            {
+                let capture_rank = chess_move.from.rank();
+                let capture_square =
+                    Square::from_file_rank(chess_move.to.file(), capture_rank).unwrap();
+                captured_piece = next.piece_at(capture_square);
+                next.set_piece(capture_square, None);
+            }
             if let Some(promotion) = chess_move.promotion {
                 piece.kind = promotion;
             }
@@ -617,6 +628,20 @@ impl Position {
                         next.castling_rights.black_kingside = false;
                         next.castling_rights.black_queenside = false;
                     }
+                }
+                let castle_distance = chess_move.to.file() as i8 - chess_move.from.file() as i8;
+                if castle_distance.abs() == 2 {
+                    let (rook_from_file, rook_to_file) = if castle_distance > 0 {
+                        (7, 5)
+                    } else {
+                        (0, 3)
+                    };
+                    let rank = chess_move.from.rank();
+                    let rook_from = Square::from_file_rank(rook_from_file, rank).unwrap();
+                    let rook_to = Square::from_file_rank(rook_to_file, rank).unwrap();
+                    let rook = next.piece_at(rook_from);
+                    next.set_piece(rook_from, None);
+                    next.set_piece(rook_to, rook);
                 }
             }
             if matches!(piece.kind, PieceKind::Rook) {
@@ -753,6 +778,7 @@ impl Position {
                 self.push_move_if_valid(from, from.file() as i8 + df, from.rank() as i8 + dr, moves);
             }
         }
+        self.push_castling_moves(from, moves);
     }
 
     fn push_pawn_moves(&self, from: Square, color: Color, moves: &mut Vec<ChessMove>) {
@@ -797,7 +823,56 @@ impl Position {
                 if piece.color != color {
                     moves.push(ChessMove::new(from, to));
                 }
+            } else if self.en_passant_target == Some(to) {
+                moves.push(ChessMove::new(from, to));
             }
+        }
+    }
+
+    fn push_castling_moves(&self, from: Square, moves: &mut Vec<ChessMove>) {
+        let (color, rank, kingside_right, queenside_right) = match self.side_to_move {
+            Color::White => (
+                Color::White,
+                0,
+                self.castling_rights.white_kingside,
+                self.castling_rights.white_queenside,
+            ),
+            Color::Black => (
+                Color::Black,
+                7,
+                self.castling_rights.black_kingside,
+                self.castling_rights.black_queenside,
+            ),
+        };
+        if from != Square::from_file_rank(4, rank).unwrap() || self.is_in_check(color) {
+            return;
+        }
+        if kingside_right
+            && self.piece_at(Square::from_file_rank(5, rank).unwrap()).is_none()
+            && self.piece_at(Square::from_file_rank(6, rank).unwrap()).is_none()
+            && self.piece_at(Square::from_file_rank(7, rank).unwrap())
+                == Some(Piece {
+                    color,
+                    kind: PieceKind::Rook,
+                })
+            && !self.is_square_attacked(Square::from_file_rank(5, rank).unwrap(), color.opposite())
+            && !self.is_square_attacked(Square::from_file_rank(6, rank).unwrap(), color.opposite())
+        {
+            moves.push(ChessMove::new(from, Square::from_file_rank(6, rank).unwrap()));
+        }
+        if queenside_right
+            && self.piece_at(Square::from_file_rank(1, rank).unwrap()).is_none()
+            && self.piece_at(Square::from_file_rank(2, rank).unwrap()).is_none()
+            && self.piece_at(Square::from_file_rank(3, rank).unwrap()).is_none()
+            && self.piece_at(Square::from_file_rank(0, rank).unwrap())
+                == Some(Piece {
+                    color,
+                    kind: PieceKind::Rook,
+                })
+            && !self.is_square_attacked(Square::from_file_rank(3, rank).unwrap(), color.opposite())
+            && !self.is_square_attacked(Square::from_file_rank(2, rank).unwrap(), color.opposite())
+        {
+            moves.push(ChessMove::new(from, Square::from_file_rank(2, rank).unwrap()));
         }
     }
 }
@@ -1150,5 +1225,48 @@ mod tests {
             })
         );
         assert!(next.piece_at(Square::from_file_rank(1, 0).unwrap()).is_none());
+    }
+
+    #[test]
+    fn generates_and_applies_castling() {
+        let position = Position::from_fen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1").unwrap();
+        let moves = position.legal_moves();
+        assert!(moves.iter().any(|chess_move| chess_move.uci() == "e1g1"));
+        assert!(moves.iter().any(|chess_move| chess_move.uci() == "e1c1"));
+
+        let kingside = position.apply_uci_move("e1g1").unwrap();
+        assert_eq!(
+            kingside.piece_at(Square::from_algebraic("g1").unwrap()),
+            Some(Piece {
+                color: Color::White,
+                kind: PieceKind::King,
+            })
+        );
+        assert_eq!(
+            kingside.piece_at(Square::from_algebraic("f1").unwrap()),
+            Some(Piece {
+                color: Color::White,
+                kind: PieceKind::Rook,
+            })
+        );
+    }
+
+    #[test]
+    fn generates_and_applies_en_passant() {
+        let position =
+            Position::from_fen("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1").unwrap();
+        let moves = position.legal_moves();
+        assert!(moves.iter().any(|chess_move| chess_move.uci() == "e5d6"));
+
+        let next = position.apply_uci_move("e5d6").unwrap();
+        assert_eq!(
+            next.piece_at(Square::from_algebraic("d6").unwrap()),
+            Some(Piece {
+                color: Color::White,
+                kind: PieceKind::Pawn,
+            })
+        );
+        assert!(next.piece_at(Square::from_algebraic("d5").unwrap()).is_none());
+        assert_eq!(next.to_fen(), "4k3/8/3P4/8/8/8/8/4K3 b - - 0 1");
     }
 }
