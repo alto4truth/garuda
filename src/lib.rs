@@ -1,4 +1,5 @@
 pub mod blockchain;
+pub mod chess;
 pub mod mentalic;
 pub mod p2p;
 pub mod stats;

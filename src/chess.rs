@@ -1,0 +1,778 @@
+use std::fmt;
+
+pub const BOARD_SQUARES: usize = 64;
+pub const DEFAULT_POLICY_WIDTH: usize = 8;
+pub const TINY_INPUT_SIZE: usize = 96;
+pub const TINY_HIDDEN_SIZE: usize = 32;
+pub const TINY_MOVE_FEATURES: usize = 12;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Color {
+    White,
+    Black,
+}
+
+impl Color {
+    pub fn opposite(self) -> Self {
+        match self {
+            Self::White => Self::Black,
+            Self::Black => Self::White,
+        }
+    }
+
+    pub fn fen_symbol(self) -> char {
+        match self {
+            Self::White => 'w',
+            Self::Black => 'b',
+        }
+    }
+
+    pub fn from_fen_symbol(symbol: char) -> Option<Self> {
+        match symbol {
+            'w' => Some(Self::White),
+            'b' => Some(Self::Black),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PieceKind {
+    Pawn,
+    Knight,
+    Bishop,
+    Rook,
+    Queen,
+    King,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Piece {
+    pub color: Color,
+    pub kind: PieceKind,
+}
+
+impl Piece {
+    pub fn fen_symbol(self) -> char {
+        let symbol = match self.kind {
+            PieceKind::Pawn => 'p',
+            PieceKind::Knight => 'n',
+            PieceKind::Bishop => 'b',
+            PieceKind::Rook => 'r',
+            PieceKind::Queen => 'q',
+            PieceKind::King => 'k',
+        };
+        match self.color {
+            Color::White => symbol.to_ascii_uppercase(),
+            Color::Black => symbol,
+        }
+    }
+
+    pub fn from_fen_symbol(symbol: char) -> Option<Self> {
+        let color = if symbol.is_ascii_uppercase() {
+            Color::White
+        } else {
+            Color::Black
+        };
+        let kind = match symbol.to_ascii_lowercase() {
+            'p' => PieceKind::Pawn,
+            'n' => PieceKind::Knight,
+            'b' => PieceKind::Bishop,
+            'r' => PieceKind::Rook,
+            'q' => PieceKind::Queen,
+            'k' => PieceKind::King,
+            _ => return None,
+        };
+        Some(Self { color, kind })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Square(pub u8);
+
+impl Square {
+    pub fn new(index: u8) -> Option<Self> {
+        if index < BOARD_SQUARES as u8 {
+            Some(Self(index))
+        } else {
+            None
+        }
+    }
+
+    pub fn from_file_rank(file: u8, rank: u8) -> Option<Self> {
+        if file < 8 && rank < 8 {
+            Some(Self(rank * 8 + file))
+        } else {
+            None
+        }
+    }
+
+    pub fn file(self) -> u8 {
+        self.0 % 8
+    }
+
+    pub fn rank(self) -> u8 {
+        self.0 / 8
+    }
+}
+
+impl fmt::Display for Square {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let file = (b'a' + self.file()) as char;
+        let rank = (b'1' + self.rank()) as char;
+        write!(f, "{file}{rank}")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChessMove {
+    pub from: Square,
+    pub to: Square,
+    pub promotion: Option<PieceKind>,
+}
+
+impl ChessMove {
+    pub fn new(from: Square, to: Square) -> Self {
+        Self {
+            from,
+            to,
+            promotion: None,
+        }
+    }
+
+    pub fn with_promotion(mut self, promotion: PieceKind) -> Self {
+        self.promotion = Some(promotion);
+        self
+    }
+
+    pub fn uci(&self) -> String {
+        let mut uci = format!("{}{}", self.from, self.to);
+        if let Some(promotion) = self.promotion {
+            uci.push(match promotion {
+                PieceKind::Knight => 'n',
+                PieceKind::Bishop => 'b',
+                PieceKind::Rook => 'r',
+                PieceKind::Queen => 'q',
+                PieceKind::Pawn | PieceKind::King => 'q',
+            });
+        }
+        uci
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PolicyEntry {
+    pub chess_move: ChessMove,
+    pub prior: f32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PolicyValue {
+    pub value: f32,
+    pub policy: Vec<PolicyEntry>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Position {
+    board: [Option<Piece>; BOARD_SQUARES],
+    side_to_move: Color,
+    halfmove_clock: u16,
+    fullmove_number: u16,
+}
+
+impl Default for Position {
+    fn default() -> Self {
+        Self::starting_position()
+    }
+}
+
+impl Position {
+    pub const STARTPOS_FEN: &'static str =
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
+
+    pub fn empty(side_to_move: Color) -> Self {
+        Self {
+            board: [None; BOARD_SQUARES],
+            side_to_move,
+            halfmove_clock: 0,
+            fullmove_number: 1,
+        }
+    }
+
+    pub fn starting_position() -> Self {
+        let mut position = Self::empty(Color::White);
+        let back_rank = [
+            PieceKind::Rook,
+            PieceKind::Knight,
+            PieceKind::Bishop,
+            PieceKind::Queen,
+            PieceKind::King,
+            PieceKind::Bishop,
+            PieceKind::Knight,
+            PieceKind::Rook,
+        ];
+        for (file, kind) in back_rank.into_iter().enumerate() {
+            position.set_piece(
+                Square::from_file_rank(file as u8, 0).unwrap(),
+                Some(Piece {
+                    color: Color::White,
+                    kind,
+                }),
+            );
+            position.set_piece(
+                Square::from_file_rank(file as u8, 1).unwrap(),
+                Some(Piece {
+                    color: Color::White,
+                    kind: PieceKind::Pawn,
+                }),
+            );
+            position.set_piece(
+                Square::from_file_rank(file as u8, 6).unwrap(),
+                Some(Piece {
+                    color: Color::Black,
+                    kind: PieceKind::Pawn,
+                }),
+            );
+            position.set_piece(
+                Square::from_file_rank(file as u8, 7).unwrap(),
+                Some(Piece {
+                    color: Color::Black,
+                    kind,
+                }),
+            );
+        }
+        position
+    }
+
+    pub fn from_fen(fen: &str) -> Result<Self, String> {
+        let mut fields = fen.split_whitespace();
+        let board_field = fields
+            .next()
+            .ok_or_else(|| "missing board field in FEN".to_string())?;
+        let side_field = fields
+            .next()
+            .ok_or_else(|| "missing side-to-move field in FEN".to_string())?;
+        let _castling_field = fields.next().unwrap_or("-");
+        let _en_passant_field = fields.next().unwrap_or("-");
+        let halfmove_clock = fields
+            .next()
+            .unwrap_or("0")
+            .parse::<u16>()
+            .map_err(|_| "invalid halfmove clock in FEN".to_string())?;
+        let fullmove_number = fields
+            .next()
+            .unwrap_or("1")
+            .parse::<u16>()
+            .map_err(|_| "invalid fullmove number in FEN".to_string())?;
+
+        let side_to_move = Color::from_fen_symbol(
+            side_field
+                .chars()
+                .next()
+                .ok_or_else(|| "empty side-to-move field in FEN".to_string())?,
+        )
+        .ok_or_else(|| "invalid side-to-move field in FEN".to_string())?;
+
+        let mut position = Self {
+            board: [None; BOARD_SQUARES],
+            side_to_move,
+            halfmove_clock,
+            fullmove_number,
+        };
+
+        let ranks: Vec<&str> = board_field.split('/').collect();
+        if ranks.len() != 8 {
+            return Err("invalid board layout in FEN".to_string());
+        }
+
+        for (rank_index, rank_field) in ranks.iter().enumerate() {
+            let board_rank = 7_u8.saturating_sub(rank_index as u8);
+            let mut file = 0_u8;
+            for symbol in rank_field.chars() {
+                if symbol.is_ascii_digit() {
+                    let empty_count = symbol
+                        .to_digit(10)
+                        .ok_or_else(|| "invalid digit in FEN".to_string())?
+                        as u8;
+                    file = file.saturating_add(empty_count);
+                    continue;
+                }
+                if file >= 8 {
+                    return Err("file overflow in FEN rank".to_string());
+                }
+                let piece =
+                    Piece::from_fen_symbol(symbol).ok_or_else(|| "invalid piece in FEN".to_string())?;
+                let square = Square::from_file_rank(file, board_rank)
+                    .ok_or_else(|| "invalid square while decoding FEN".to_string())?;
+                position.set_piece(square, Some(piece));
+                file += 1;
+            }
+            if file != 8 {
+                return Err("rank does not fill eight files in FEN".to_string());
+            }
+        }
+
+        Ok(position)
+    }
+
+    pub fn to_fen(&self) -> String {
+        let mut ranks = Vec::with_capacity(8);
+        for rank in (0..8).rev() {
+            let mut rank_text = String::new();
+            let mut empty_run = 0;
+            for file in 0..8 {
+                let square = Square::from_file_rank(file, rank).unwrap();
+                if let Some(piece) = self.piece_at(square) {
+                    if empty_run > 0 {
+                        rank_text.push(char::from_digit(empty_run, 10).unwrap());
+                        empty_run = 0;
+                    }
+                    rank_text.push(piece.fen_symbol());
+                } else {
+                    empty_run += 1;
+                }
+            }
+            if empty_run > 0 {
+                rank_text.push(char::from_digit(empty_run, 10).unwrap());
+            }
+            ranks.push(rank_text);
+        }
+        format!(
+            "{} {} - - {} {}",
+            ranks.join("/"),
+            self.side_to_move.fen_symbol(),
+            self.halfmove_clock,
+            self.fullmove_number
+        )
+    }
+
+    pub fn side_to_move(&self) -> Color {
+        self.side_to_move
+    }
+
+    pub fn piece_at(&self, square: Square) -> Option<Piece> {
+        self.board[square.0 as usize]
+    }
+
+    pub fn set_piece(&mut self, square: Square, piece: Option<Piece>) {
+        self.board[square.0 as usize] = piece;
+    }
+
+    pub fn iter_pieces(&self) -> impl Iterator<Item = (Square, Piece)> + '_ {
+        self.board
+            .iter()
+            .enumerate()
+            .filter_map(|(index, piece)| piece.map(|piece| (Square(index as u8), piece)))
+    }
+
+    pub fn apply_move(&self, chess_move: &ChessMove) -> Self {
+        let mut next = self.clone();
+        let moving_piece = next.piece_at(chess_move.from);
+        next.set_piece(chess_move.from, None);
+        if let Some(mut piece) = moving_piece {
+            if let Some(promotion) = chess_move.promotion {
+                piece.kind = promotion;
+            }
+            next.set_piece(chess_move.to, Some(piece));
+        }
+        next.side_to_move = self.side_to_move.opposite();
+        next.halfmove_clock = next.halfmove_clock.saturating_add(1);
+        if matches!(next.side_to_move, Color::White) {
+            next.fullmove_number = next.fullmove_number.saturating_add(1);
+        }
+        next
+    }
+
+    pub fn pseudo_legal_moves(&self) -> Vec<ChessMove> {
+        let mut moves = Vec::new();
+        for (square, piece) in self.iter_pieces() {
+            if piece.color != self.side_to_move {
+                continue;
+            }
+            match piece.kind {
+                PieceKind::Pawn => self.push_pawn_moves(square, piece.color, &mut moves),
+                PieceKind::Knight => self.push_knight_moves(square, &mut moves),
+                PieceKind::Bishop => self.push_slider_moves(square, &[(1, 1), (1, -1), (-1, 1), (-1, -1)], &mut moves),
+                PieceKind::Rook => self.push_slider_moves(square, &[(1, 0), (-1, 0), (0, 1), (0, -1)], &mut moves),
+                PieceKind::Queen => self.push_slider_moves(
+                    square,
+                    &[(1, 1), (1, -1), (-1, 1), (-1, -1), (1, 0), (-1, 0), (0, 1), (0, -1)],
+                    &mut moves,
+                ),
+                PieceKind::King => self.push_king_moves(square, &mut moves),
+            }
+        }
+        moves
+    }
+
+    fn push_move_if_valid(&self, from: Square, file: i8, rank: i8, moves: &mut Vec<ChessMove>) -> bool {
+        if !(0..8).contains(&file) || !(0..8).contains(&rank) {
+            return false;
+        }
+        let to = Square::from_file_rank(file as u8, rank as u8).unwrap();
+        if let Some(piece) = self.piece_at(to) {
+            if piece.color == self.side_to_move {
+                return false;
+            }
+            moves.push(ChessMove::new(from, to));
+            return false;
+        }
+        moves.push(ChessMove::new(from, to));
+        true
+    }
+
+    fn push_slider_moves(&self, from: Square, directions: &[(i8, i8)], moves: &mut Vec<ChessMove>) {
+        for (df, dr) in directions {
+            let mut file = from.file() as i8 + df;
+            let mut rank = from.rank() as i8 + dr;
+            while self.push_move_if_valid(from, file, rank, moves) {
+                file += df;
+                rank += dr;
+            }
+        }
+    }
+
+    fn push_knight_moves(&self, from: Square, moves: &mut Vec<ChessMove>) {
+        const OFFSETS: [(i8, i8); 8] = [
+            (1, 2),
+            (2, 1),
+            (2, -1),
+            (1, -2),
+            (-1, -2),
+            (-2, -1),
+            (-2, 1),
+            (-1, 2),
+        ];
+        for (df, dr) in OFFSETS {
+            self.push_move_if_valid(from, from.file() as i8 + df, from.rank() as i8 + dr, moves);
+        }
+    }
+
+    fn push_king_moves(&self, from: Square, moves: &mut Vec<ChessMove>) {
+        for df in -1..=1 {
+            for dr in -1..=1 {
+                if df == 0 && dr == 0 {
+                    continue;
+                }
+                self.push_move_if_valid(from, from.file() as i8 + df, from.rank() as i8 + dr, moves);
+            }
+        }
+    }
+
+    fn push_pawn_moves(&self, from: Square, color: Color, moves: &mut Vec<ChessMove>) {
+        let direction = match color {
+            Color::White => 1,
+            Color::Black => -1,
+        };
+        let next_rank = from.rank() as i8 + direction;
+        if (0..8).contains(&next_rank) {
+            let to = Square::from_file_rank(from.file(), next_rank as u8).unwrap();
+            if self.piece_at(to).is_none() {
+                let promotion_rank = matches!(color, Color::White) && next_rank == 7
+                    || matches!(color, Color::Black) && next_rank == 0;
+                if promotion_rank {
+                    moves.push(ChessMove::new(from, to).with_promotion(PieceKind::Queen));
+                } else {
+                    moves.push(ChessMove::new(from, to));
+                }
+            }
+        }
+        for df in [-1, 1] {
+            let file = from.file() as i8 + df;
+            if !(0..8).contains(&file) || !(0..8).contains(&next_rank) {
+                continue;
+            }
+            let to = Square::from_file_rank(file as u8, next_rank as u8).unwrap();
+            if let Some(piece) = self.piece_at(to) {
+                if piece.color != color {
+                    moves.push(ChessMove::new(from, to));
+                }
+            }
+        }
+    }
+}
+
+pub trait PolicyValueModel: Send + Sync {
+    fn evaluate(&self, position: &Position) -> PolicyValue;
+}
+
+#[derive(Debug, Clone)]
+pub struct TinyNeuralModel {
+    pub input_weights: Vec<f32>,
+    pub hidden_bias: Vec<f32>,
+    pub value_weights: Vec<f32>,
+    pub value_bias: f32,
+    pub policy_weights: Vec<f32>,
+    pub policy_bias: Vec<f32>,
+}
+
+impl Default for TinyNeuralModel {
+    fn default() -> Self {
+        let input_weights = (0..(TINY_INPUT_SIZE * TINY_HIDDEN_SIZE))
+            .map(|index| ((index as f32 + 1.0) * 0.013).sin() * 0.08)
+            .collect();
+        let hidden_bias = (0..TINY_HIDDEN_SIZE)
+            .map(|index| ((index as f32 + 1.0) * 0.17).cos() * 0.03)
+            .collect();
+        let value_weights = (0..TINY_HIDDEN_SIZE)
+            .map(|index| ((index as f32 + 1.0) * 0.11).sin() * 0.09)
+            .collect();
+        let policy_weights = vec![0.0; TINY_HIDDEN_SIZE * TINY_MOVE_FEATURES];
+        let policy_bias = vec![0.0; TINY_MOVE_FEATURES];
+        Self {
+            input_weights,
+            hidden_bias,
+            value_weights,
+            value_bias: 0.0,
+            policy_weights,
+            policy_bias,
+        }
+    }
+}
+
+impl TinyNeuralModel {
+    pub fn parameter_count(&self) -> usize {
+        self.input_weights.len()
+            + self.hidden_bias.len()
+            + self.value_weights.len()
+            + 1
+            + self.policy_weights.len()
+            + self.policy_bias.len()
+    }
+
+    pub fn parameter_vector(&self) -> Vec<f32> {
+        let mut vector = Vec::with_capacity(self.parameter_count());
+        vector.extend_from_slice(&self.input_weights);
+        vector.extend_from_slice(&self.hidden_bias);
+        vector.extend_from_slice(&self.value_weights);
+        vector.push(self.value_bias);
+        vector.extend_from_slice(&self.policy_weights);
+        vector.extend_from_slice(&self.policy_bias);
+        vector
+    }
+
+    pub fn encode_position(position: &Position) -> [f32; TINY_INPUT_SIZE] {
+        let mut features = [0.0; TINY_INPUT_SIZE];
+        for (square, piece) in position.iter_pieces() {
+            let sign = match piece.color {
+                Color::White => 1.0,
+                Color::Black => -1.0,
+            };
+            let index = square.0 as usize;
+            features[index] = sign
+                * match piece.kind {
+                    PieceKind::Pawn => 1.0,
+                    PieceKind::Knight => 2.0,
+                    PieceKind::Bishop => 3.0,
+                    PieceKind::Rook => 4.0,
+                    PieceKind::Queen => 5.0,
+                    PieceKind::King => 6.0,
+                }
+                / 6.0;
+        }
+        features[95] = match position.side_to_move() {
+            Color::White => 1.0,
+            Color::Black => -1.0,
+        };
+        features
+    }
+
+    fn hidden_state(&self, position: &Position) -> Vec<f32> {
+        let input = Self::encode_position(position);
+        (0..TINY_HIDDEN_SIZE)
+            .map(|hidden_index| {
+                let base = hidden_index * TINY_INPUT_SIZE;
+                let mut sum = self.hidden_bias[hidden_index];
+                for input_index in 0..TINY_INPUT_SIZE {
+                    sum += self.input_weights[base + input_index] * input[input_index];
+                }
+                sum / (1.0 + sum.abs())
+            })
+            .collect()
+    }
+
+    fn move_features(chess_move: &ChessMove, ply_hint: f32) -> [f32; TINY_MOVE_FEATURES] {
+        let mut features = [0.0; TINY_MOVE_FEATURES];
+        features[0] = chess_move.from.file() as f32 / 7.0;
+        features[1] = chess_move.from.rank() as f32 / 7.0;
+        features[2] = chess_move.to.file() as f32 / 7.0;
+        features[3] = chess_move.to.rank() as f32 / 7.0;
+        features[4] = if chess_move.promotion.is_some() { 1.0 } else { 0.0 };
+        features[5] = ply_hint;
+        features
+    }
+}
+
+impl PolicyValueModel for TinyNeuralModel {
+    fn evaluate(&self, position: &Position) -> PolicyValue {
+        let hidden = self.hidden_state(position);
+        let raw_value = hidden
+            .iter()
+            .zip(self.value_weights.iter())
+            .fold(self.value_bias, |acc, (node, weight)| acc + (node * weight));
+        let value = raw_value.tanh();
+
+        let moves = position.pseudo_legal_moves();
+        if moves.is_empty() {
+            return PolicyValue {
+                value,
+                policy: Vec::new(),
+            };
+        }
+
+        let ply_hint = position.fullmove_number as f32 / 100.0;
+        let mut entries: Vec<(ChessMove, f32)> = moves
+            .into_iter()
+            .map(|chess_move| {
+                let move_features = Self::move_features(&chess_move, ply_hint);
+                let mut score = 0.0;
+                for hidden_index in 0..TINY_HIDDEN_SIZE {
+                    let base = hidden_index * TINY_MOVE_FEATURES;
+                    for feature_index in 0..TINY_MOVE_FEATURES {
+                        score += hidden[hidden_index]
+                            * self.policy_weights[base + feature_index]
+                            * move_features[feature_index];
+                    }
+                }
+                for feature_index in 0..TINY_MOVE_FEATURES {
+                    score += self.policy_bias[feature_index] * move_features[feature_index];
+                }
+                (chess_move, score)
+            })
+            .collect();
+        entries.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        entries.truncate(DEFAULT_POLICY_WIDTH);
+        let logits: Vec<f32> = entries
+            .iter()
+            .map(|(_, score)| score.clamp(-10.0, 10.0).exp())
+            .collect();
+        let total: f32 = logits.iter().sum::<f32>().max(f32::EPSILON);
+        let policy = entries
+            .into_iter()
+            .zip(logits.into_iter())
+            .map(|((chess_move, _), prior)| PolicyEntry {
+                chess_move,
+                prior: prior / total,
+            })
+            .collect();
+
+        PolicyValue { value, policy }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SearchConfig {
+    pub cpuct: f32,
+    pub root_policy_width: usize,
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self {
+            cpuct: 1.35,
+            root_policy_width: DEFAULT_POLICY_WIDTH,
+        }
+    }
+}
+
+pub struct Engine<M: PolicyValueModel> {
+    model: M,
+    config: SearchConfig,
+}
+
+impl<M: PolicyValueModel> Engine<M> {
+    pub fn new(model: M, config: SearchConfig) -> Self {
+        Self { model, config }
+    }
+
+    pub fn evaluate(&self, position: &Position) -> PolicyValue {
+        let mut evaluation = self.model.evaluate(position);
+        evaluation.policy.truncate(self.config.root_policy_width);
+        evaluation
+    }
+
+    pub fn best_move(&self, position: &Position) -> Option<ChessMove> {
+        self.evaluate(position)
+            .policy
+            .into_iter()
+            .max_by(|a, b| a.prior.partial_cmp(&b.prior).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|entry| entry.chess_move)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn starting_position_has_pieces() {
+        let position = Position::starting_position();
+        assert_eq!(position.side_to_move(), Color::White);
+        assert!(position.piece_at(Square::from_file_rank(4, 0).unwrap()).is_some());
+        assert!(position.piece_at(Square::from_file_rank(4, 7).unwrap()).is_some());
+    }
+
+    #[test]
+    fn pseudo_legal_moves_exist_from_start() {
+        let position = Position::starting_position();
+        let moves = position.pseudo_legal_moves();
+        assert!(!moves.is_empty());
+        assert!(moves.iter().any(|chess_move| chess_move.uci() == "b1c3"));
+    }
+
+    #[test]
+    fn neural_model_produces_policy_and_value() {
+        let model = TinyNeuralModel::default();
+        let evaluation = model.evaluate(&Position::starting_position());
+        assert!(!evaluation.policy.is_empty());
+        assert!((-1.0..=1.0).contains(&evaluation.value));
+    }
+
+    #[test]
+    fn engine_returns_a_move() {
+        let engine = Engine::new(TinyNeuralModel::default(), SearchConfig::default());
+        let best_move = engine.best_move(&Position::starting_position());
+        assert!(best_move.is_some());
+    }
+
+    #[test]
+    fn parameter_vector_has_expected_shape() {
+        let model = TinyNeuralModel::default();
+        assert_eq!(
+            model.parameter_count(),
+            (TINY_INPUT_SIZE * TINY_HIDDEN_SIZE) + TINY_HIDDEN_SIZE + TINY_HIDDEN_SIZE + 1
+                + (TINY_HIDDEN_SIZE * TINY_MOVE_FEATURES)
+                + TINY_MOVE_FEATURES
+        );
+        assert_eq!(model.parameter_vector().len(), model.parameter_count());
+    }
+
+    #[test]
+    fn starting_position_round_trips_to_fen() {
+        let position = Position::starting_position();
+        assert_eq!(position.to_fen(), Position::STARTPOS_FEN);
+        let reparsed = Position::from_fen(&position.to_fen()).unwrap();
+        assert_eq!(reparsed.to_fen(), Position::STARTPOS_FEN);
+    }
+
+    #[test]
+    fn parses_sparse_fen_position() {
+        let position = Position::from_fen("8/8/3k4/8/8/4K3/8/8 b - - 4 18").unwrap();
+        assert_eq!(position.side_to_move(), Color::Black);
+        assert_eq!(
+            position.piece_at(Square::from_file_rank(3, 5).unwrap()),
+            Some(Piece {
+                color: Color::Black,
+                kind: PieceKind::King,
+            })
+        );
+        assert_eq!(
+            position.piece_at(Square::from_file_rank(4, 2).unwrap()),
+            Some(Piece {
+                color: Color::White,
+                kind: PieceKind::King,
+            })
+        );
+        assert_eq!(position.to_fen(), "8/8/3k4/8/8/4K3/8/8 b - - 4 18");
+    }
+}
