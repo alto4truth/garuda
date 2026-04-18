@@ -1,287 +1,330 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE LambdaCase #-}
 
-module MCTSChess where
+module Main where
 
-import Data.Array (Array, listArray, (!))
-import Data.List (sortBy, genericLength)
+import Data.Array (Array, listArray,(!),elems,assocs)
+import Data.List (sortBy,maximumBy,genericLength,find,minimumBy)
 import Data.Ord (comparing)
-import System.Random (RandomGen, randomR)
-import Control.Monad (forM_)
-import System.IO (hFlush, stdout)
+import System.Random (StdGen,mkStdGen,randomR,randomRs)
+import Control.Monad (forM,when)
+import Text.Printf (printf)
 
 -- ============================================================================
--- SECTION 1: Chess Basics
+-- CHESS TYPES
 -- ============================================================================
 
-data Piece = P | N | B | R | Q | K | p | n | b | r | q | k
+data Piece = Pawn | Knight | Bishop | Rook | Queen | King 
+          | PawnW | KnightW | BishopW | RookW | QueenW | KingW
   deriving (Show, Eq, Ord)
 
-type Square = (Int, Int)
-type Board = Array Square (Maybe Piece)
+data Square = SQ Int Int deriving (Show, Eq)
 
-data Position = Position
-  { board :: Board
-  , toMove :: Color
-  , castling :: Castling
+data Move = Move Square Square (Maybe Piece) | NullMove
+  deriving (Show, Eq)
+
+data Position = Position 
+  { board    :: Array Square (Maybe Piece)
+  , toMove   :: Bool  -- True = White, False = Black
+  , castleW  :: (Bool, Bool)  -- (KingSide, QueenSide)
+  , castleB :: (Bool, Bool)
   , enPassant :: Maybe Square
   , halfMove :: Int
   , fullMove :: Int
   } deriving (Show, Eq)
 
-data Color = White | Black deriving (Show, Eq, Ord)
-
-data Castling = Castling
-  { whiteKingside  :: Bool
-  , whiteQueenside :: Bool
-  , blackKingside :: Bool
-  , blackQueenside :: Bool
-  } deriving (Show, Eq)
-
-data Move = Move
-  { from     :: Square
-  , to       :: Square
-  , promote :: Maybe Piece
-  } deriving (Show, Eq)
+data MCTSNode = MCTSNode
+  { position   :: Position
+  , parentN   :: Maybe MCTSNode
+  , childrenN :: [MCTSNode]
+  , wins      :: !Double
+  , visits    :: !Int
+  } deriving (Show)
 
 -- ============================================================================
--- SECTION 2: Board Initialization
+-- BOARD SETUP
 -- ============================================================================
 
-initialBoard :: Board
-initialBoard = listArray ((0,0), (7,7)) $ concat
-  [ [Just r, Just n, Just b, Just q, Just k, Just b, Just n, Just r]
-  , [Just p, Just p, Just p, Just p, Just p, Just p, Just p, Just p]
-  , [Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing]
-  , [Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing]
-  , [Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing]
-  , [Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing]
-  , [Just P, Just P, Just P, Just P, Just P, Just P, Just P, Just P]
-  , [Just R, Just N, Just B, Just Q, Just K, Just B, Just N, Just R]
-  ]
-
-initialPosition :: Position
-initialPosition = Position
-  { board = initialBoard
-  , toMove = White
-  , castling = Castling True True True True
+initialPos :: Position
+initialPos = Position 
+  { board = listArray (SQ 0 0, SQ 7 7) $ concat
+      [ [Just RookW, Just KnightW, Just BishopW, Just QueenW, Just KingW, Just BishopW, Just KnightW, Just RookW]
+      , [Just PawnW, Just PawnW, Just PawnW, Just PawnW, Just PawnW, Just PawnW, Just PawnW, Just PawnW]
+      , replicate 8 Nothing
+      , replicate 8 Nothing
+      , replicate 8 Nothing
+      , replicate 8 Nothing
+      , [Just Pawn, Just Pawn, Just Pawn, Just Pawn, Just Pawn, Just Pawn, Just Pawn, Just Pawn]
+      , [Just Rook, Just Knight, Just Bishop, Just Queen, Just King, Just Bishop, Just Knight, Just Rook]
+      ]
+  , toMove = True
+  , castleW = (True, True)
+  , castleB = (True, True)
   , enPassant = Nothing
   , halfMove = 0
   , fullMove = 1
   }
 
 -- ============================================================================
--- SECTION 3: Move Generation
+-- PIECE VALUES
 -- ============================================================================
 
-allMoves :: Position -> [Move]
-allMoves pos = concatMap (movesFromSquare pos) (squareIndices (toMove pos))
+pieceValue :: Piece -> Int
+pieceValue p = case p of
+  PawnW -> 1; Pawn -> -1
+  KnightW -> 3; Knight -> -3  
+  BishopW -> 3; Bishop -> -3
+  RookW -> 5; Rook -> -5
+  QueenW -> 9; Queen -> -9
+  KingW -> 0; King -> 0
+  _ -> 0
 
-movesFromSquare :: Position -> Square -> [Move]
-movesFromSquare pos sq = case board pos ! sq of
-  Nothing -> []
-  Just p  -> if colorOf p == toMove pos then pieceMoves pos p sq else []
+isWhite :: Piece -> Bool
+isWhite p = any (== p) [PawnW,KnightW,BishopW,RookW,QueenW,KingW]
 
-colorOf :: Piece -> Color
-colorOf p = if p `elem` [P, N, B, R, Q, K] then White else Black
+isBlack :: Piece -> Bool  
+isBlack p = any (== p) [Pawn,Knight,Bishop,Rook,Queen,King]
 
-pieceMoves :: Position -> Piece -> Square -> [Move]
-pieceMoves pos p sq = case p of
-  P -> pawnMoves pos sq
-  N -> knightMoves sq
-  B -> bishopMoves pos sq
-  R -> rookMoves pos sq
-  Q -> queenMoves pos sq
-  K -> kingMoves sq
+-- ============================================================================
+-- MOVE GENERATION
+-- ============================================================================
+
+onBoard :: Square -> Bool
+onBoard (SQ r c) = r >= 0 && r < 8 && c >= 0 && c < 8
 
 pawnMoves :: Position -> Square -> [Move]
-pawnMoves pos (r, c) = let dir = if toMove pos == White then 1 else -1 in
-  [Move (r, c) (r + dir, c) Nothing | onBoard (r + dir, c) && isEmpty pos (r + dir, c)] ++
-  [Move (r, c) (r + dir, c + d) Nothing | d <- [-1,1], onBoard (r + dir, c + d), 
-    isEnemy pos (r + dir, c + d)] ++
-  [Move (r, c) (r + 2*dir, c) Nothing | r == startRank && isEmpty pos (r + dir, c) && isEmpty pos (r + 2*dir, c)]
-  where
-    startRank = if toMove pos == White then 1 else 6
-    onBoard (r', c') = r' >= 0 && r' < 8 && c' >= 0 && c' < 8
-    isEmpty pos' sq' = maybe True (\_ -> False) (board pos' ! sq')
-    isEnemy pos' sq' = maybe False (\p' -> colorOf p' /= toMove pos') (board pos' ! sq')
+pawnMoves pos (SQ r c) = let dir = if toMove pos then 1 else -1
+                             start = if toMove pos then 1 else 6
+                             capDirs = [dir - 1, dir + 1] in
+  [Move (SQ r c) (SQ (r + dir) c Nothing | onBoard (SQ (r + dir) c), 
+    isNothing (board pos ! SQ (r + dir) c)] ++
+  [Move (SQ r c) (SQ (r + dir) (c + d) Nothing | d <- capDirs, 
+    onBoard (SQ (r + dir) (c + d)),
+    isJust (board pos ! SQ (r + dir) (c + d)),
+    maybe False (\p -> isBlack p /= toMove pos) (board pos ! SQ (r + dir) (c + d))] ++
+  [Move (SQ r c) (SQ (r + 2*dir) c Nothing | r == start,
+    isNothing (board pos ! SQ (r + dir) c),
+    isNothing (board pos ! SQ (r + 2*dir) c)]
 
 knightMoves :: Square -> [Move]
-knightMoves (r, c) = [Move (r, c) (r + dr, c + dc) Nothing | (dr, dc) <- knightOffsets, onBoard (r + dr, c + dc)]
-  where
-    knightOffsets = [(1,2),(1,-2),(-1,2),(-1,-2),(2,1),(2,-1),(-2,1),(-2,-1)]
-    onBoard (r', c') = r' >= 0 && r' < 8 && c' >= 0 && c' < 8
+knightMoves sq@(SQ r c) = 
+  [Move sq (SQ (r + dr) (c + dc) Nothing | (dr,dc) <- [(1,2),(1,-2),(-1,2),(-1,-2),(2,1),(2,-1),(-2,1),(-2,-1)],
+    onBoard (SQ (r + dr) (c + dc))]
 
 bishopMoves :: Position -> Square -> [Move]
-bishopMoves pos (r, c) = 
-  [Move (r, c) (r + dr*d, c + dc*d) Nothing | d <- [1..6], 
-    onBoard (r + dr*d, c + dc*d),
-    not (isBlocked pos (r + dr*d', c + dc*d'))] 
-  | dr <- [-1,1], dc <- [-1,1], dr /= 0 || dc /= 0]
-  where
-    onBoard (r', c') = r' >= 0 && r' < 8 && c' >= 0 && c' < 8
-    isBlocked pos' (r', c') = maybe False (\p' -> colorOf p' == toMove pos') (board pos' ! r')
-    isBlocked pos' _ = False
+bishopMoves pos (SQ r c) = concat 
+  [[Move (SQ r c) (SQ (r + dr*d) (c + dc*d) Nothing) | d <- [1..6], 
+    onBoard (SQ (r + dr*d) (c + dc*d)),
+    isNothing (board pos ! SQ (r + dr*d') (c + dc*d'))] 
+  | dr <- [-1,1], dc <- [-1,1], (dr,dc) /= (0,0)]
+  where d' = 0
 
 rookMoves :: Position -> Square -> [Move]
-rookMoves pos (r, c) = 
-  [Move (r, c) (r + dr*d, c + dc*d) Nothing | d <- [1..6],
-    onBoard (r + dr*d, c + dc*d),
-    not (isBlocked pos (r + dr*d', c + dc*d'))]
-  where
-    dr = 0; dc = 0; offsets = [(1,0),(-1,0),(0,1),(0,-1)]
+rookMoves pos (SQ r c) = concat
+  [[Move (SQ r c) (SQ (r + dr*d) (c + dc*d) Nothing) | d <- [1..6],
+    onBoard (SQ (r + dr*d) (c + dc*d)),
+    isNothing (board pos ! SQ (r + dr*d') (c + dc*d'))]
+  | dr <- [0,1,-1], dc <- [0,1,-1], (dr,dc) /= (0,0), dr == 0 || dc == 0]
 
 queenMoves :: Position -> Square -> [Move]
 queenMoves pos sq = bishopMoves pos sq ++ rookMoves pos sq
 
-kingMoves :: Square -> [Move]
-kingMoves (r, c) = [Move (r, c) (r + dr, c + dc) Nothing | dr <- [-1,0,1], dc <- [-1,0,1],
-  dr /= 0 || dc /= 0, onBoard (r + dr, c + dc)]
-  where onBoard (r', c') = r' >= 0 && r' < 8 && c' >= 0 && c' < 8
+kingMoves :: Position -> Square -> [Move]
+kingMoves pos (SQ r c) = 
+  [Move (SQ r c) (SQ (r + dr) (c + dc) Nothing) | dr <- [-1,0,1], dc <- [-1,0,1],
+    (dr,dc) /= (0,0), onBoard (SQ (r + dr) (c + dc))]
 
-squareIndices :: Color -> [Square]
-squareIndices c = [(r, c') | r <- [0..7], c' <- [0..7]]
+isNothing :: Maybe a -> Bool
+isNothing Nothing = True
+isNothing _ = False
+
+isJust :: Maybe a -> Bool
+isJust Nothing = False
+isJust _ = True
 
 -- ============================================================================
--- SECTION 4: MCTS Integration
+-- LEGAL MOVES
 -- ============================================================================
 
-data GameState = GameState
-  { position  :: Position
-  , moveList :: [Move]
-  , score    :: Double
-  , visits   :: Int
-  } deriving (Show)
+legalMoves :: Position -> [Move]
+legalMoves pos = concatMap pieceLegalMoves squares
+  where
+    squares = [SQ r c | r <- [0..7], c <- [0..7]]
+    pieceLegalMoves sq = case board pos ! sq of
+      Nothing -> []
+      Just p -> if (isWhite p) == toMove pos 
+                 then pieceMoves pos p sq 
+                 else []
+    
+pieceMoves :: Position -> Piece -> Square -> [Move]
+pieceMoves pos p sq = case p of
+  PawnW | toMove pos -> pawnMoves pos sq
+  Pawn | not (toMove pos) -> pawnMoves pos sq
+  KnightW | toMove pos -> knightMoves sq  
+  Knight | not (toMove pos) -> knightMoves sq
+  BishopW | toMove pos -> bishopMoves pos sq
+  Bishop | not (toMove pos) -> bishopMoves pos sq
+  RookW | toMove pos -> rookMoves pos sq
+  Rook | not (toMove pos) -> rookMoves pos sq
+  QueenW | toMove pos -> queenMoves pos sq
+  Queen | not (toMove pos) -> queenMoves pos sq
+  KingW | toMove pos -> kingMoves pos sq
+  King | not (toMove pos) -> kingMoves pos sq
+  _ -> []
 
-data MCTSNode = MCTSNode
-  { state    :: GameState
-  , parent   :: Maybe MCTSNode
-  , children :: [MCTSNode]
-  , wins     :: Double
-  , sims     :: Int
-  } deriving (Show)
+-- ============================================================================
+-- MAKE MOVE
+-- ============================================================================
 
-createRoot :: Position -> MCTSNode
-createRoot pos = MCTSNode
-  { state = GameState pos [] 0.0 0
-  , parent = Nothing
-  , children = []
+makeMove :: Position -> Move -> Position
+makeMove pos (Move from to@(SQ r c) prom) = Position
+  { board = b // [(to, b ! from), (from, Nothing)]
+  , toMove = not (toMove pos)
+  , castleW = castleW pos
+  , castleB = castleB pos
+  , enPassant = Nothing
+  , halfMove = newHalf
+  , fullMove = newFull
+  }
+  where
+    b = board pos
+    newHalf = halfMove pos + 1
+    newFull = if not (toMove pos) then fullMove pos + 1 else fullMove pos
+
+-- ============================================================================
+-- MCTS SEARCH
+-- ============================================================================
+
+createNode :: Position -> Maybe MCTSNode -> MCTSNode
+createNode pos parent = MCTSNode
+  { position = pos
+  , parentN = parent
+  , childrenN = []
   , wins = 0.0
-  , sims = 0
+  , visits = 0
   }
 
-explorationConstant :: Double
-explorationConstant = 1.414
-
 uct :: MCTSNode -> Double
-uct node = case parent node of
-  Nothing -> 0.0
-  Just p  -> (wins node / fromIntegral (sims node + 1)) + 
-             explorationConstant * sqrt (log (fromIntegral (sims p + 1)) / fromIntegral (sims node + 1))
+uct node = if visits node == 0 then 1000 else
+  (wins node / fromIntegral (visits node)) + 
+  1.414 * sqrt (log (fromIntegral (visits parentNode + 1)) / fromIntegral (visits node))
+  where parentNode = case parentN node of
+                      Nothing -> 1
+                      Just p -> visits p
 
-select :: MCTSNode -> MCTSNode
-select node = if null (children node) then node else
-  let best = maximumBy (comparing uct) (children node)
-  in select best
+selectBest :: MCTSNode -> MCTSNode
+selectBest node = if null (childrenN node) then node else
+  maximumBy (comparing uct) (childrenN node)
 
-expand :: MCTSNode -> Move -> MCTSNode
-expand node move = node { children = newChild : children node }
+expandNode :: MCTSNode -> Move -> MCTSNode  
+expandNode node move = node { childrenN = newChild : childrenN node }
   where
-    newPos = applyMove (position (state node)) move
-    newGameState = GameState newPos [move] 0.0 0
-    newChild = MCTSNode newGameState (Just node) [] 0.0 0
+    newPos = makeMove (position node) move
+    newChild = createNode newPos (Just node)
 
-simulate :: MCTSNode -> IO Double
-simulate node = do
-  eval <- evaluatePosition (position (state node))
-  return eval
+backprop :: MCTSNode -> Double -> MCTSNode
+backprop node score = node { wins = wins node + score, visits = visits node + 1 }
 
-evaluatePosition :: Position -> IO Double
-evaluatePosition pos = do
-  let moves = allMoves pos
-  if null moves 
-    then return $ if isInCheck pos (toMove pos) then -1000 else 0
-    else do
-      n <- randomIO :: IO Int
-      return $ fromIntegral (n `mod` length moves) / 100
+simulate :: Position -> Bool -> Double  
+simulate pos whiteToMove = evaluatePos pos whiteToMove
 
-backpropagate :: MCTSNode -> Double -> MCTSNode
-backpropagate node val = node { 
-  wins = wins node + val,
-  sims = sims node + 1 
-  } 
+evaluatePos :: Position -> Bool -> Double
+evaluatePos pos whiteToMove = fromIntegral score / 100.0
+  where
+    score = sum [maybe 0 pieceValue p | (_, Just p) <- assocs (board pos)]
 
 -- ============================================================================
--- SECTION 5: Search
+-- MCTS SEARCH
 -- ============================================================================
 
-search :: Position -> Int -> IO Move
-search pos iters = do
-  let root = createRoot pos
-  loop root iters
+mctsSearch :: Position -> Int -> IO Move
+mctsSearch pos iterations = do
+  let root = createNode pos Nothing
+  loop root iterations
   where
-    loop node 0 = return $ head $ moveList $ state $ head $ sortBy (comparing (sims . state)) (children node)
+    loop node 0 = do
+      let best = maximumBy (comparing (fromIntegral . visits)) (childrenN node)
+      return $ head $ map (\n -> head $ legalMoves $ position n) (childrenN node)
+    
     loop node n = do
-      let selected = select node
-      let expanded = if null (children selected) 
-                    then expand selected (head $ allMoves $ position $ state selected)
-                    else selected
-      val <- simulate expanded
-      let backed = backpropagate expanded val
+      let selected = selectBest node
+      let moves = legalMoves (position selected)
+      when (null moves) $ return ()
+      let expanded = if null (childrenN selected) 
+                     then expandNode selected (head moves)
+                     else selected
+      let !score = simulate (position expanded) (toMove pos)
+      let !backed = backprop expanded score
       loop node (n - 1)
 
 -- ============================================================================
--- SECTION 6: Evaluation
+-- EVALUATE BOARD
 -- ============================================================================
 
-pieceValues :: Piece -> Int
-pieceValues p = case p of
-  P -> 1; N -> 3; B -> 3; R -> 5; Q -> 9; K -> 0
-  p -> -1; n -> -3; b -> -3; r -> -5; q -> -9; k -> 0
-
-evaluateBoard :: Board -> Int
-evaluateBoard b = sum [maybe 0 pieceValues p | p <- elems b]
-
-isInCheck :: Position -> Color -> Bool
-isInCheck pos color = undefined
-
-hasLegalMoves :: Position -> Bool
-hasLegalMoves pos = not $ null $ allMoves pos
+evaluateBoard :: Position -> Int
+evaluateBoard pos = sum [maybe 0 pieceValue p | (_, Just p) <- assocs (board pos)]
 
 -- ============================================================================
--- SECTION 7: Main
+-- GAME LOOP
+-- ============================================================================
+
+printBoard :: Position -> IO ()
+printBoard pos = do
+  putStrLn "  +-----------------+"
+  mapM_ (\r -> do
+    putStr $ show (7-r) ++ " |"
+    forM [0..7] $ \c -> do
+      let sq = SQ r c
+      let p = board pos ! sq
+      putStr $ maybe "." showPiece p
+    putStrLn "|"
+    ) [0..7]
+  putStrLn "  +-----------------+"
+  putStrLn "    a b c d e f g h"
+  where
+    showPiece Nothing = "."
+    showPiece (Just p) = case p of
+      Pawn -> "p"; Knight -> "n"; Bishop -> "b"; Rook -> "r"; Queen -> "q"; King -> "k"
+      PawnW -> "P"; KnightW -> "N"; BishopW -> "B"; RookW -> "R"; QueenW -> "Q"; KingW -> "K"
+
+playGame :: Position -> Int -> IO Position
+playGame pos 0 = return pos
+playGame pos n = do
+  printBoard pos
+  printf "Move %d: %s to move\n" (fullMove pos) (if toMove pos then "White" else "Black")
+  printf "Evaluation: %d\n" (evaluateBoard pos)
+  
+  when (toMove pos) $ do
+    move <- mctsSearch pos 1000
+    let newPos = makeMove pos move
+    printf "White plays: %s -> %s\n" (show (from move)) (show (to move))
+    playGame newPos (n-1)
+  
+  when (not (toMove pos)) $ do
+    move <- mctsSearch pos 1000  
+    let newPos = makeMove pos move
+    printf "Black plays: %s -> %s\n" (show (from move)) (show (to move))
+    playGame newPos (n-1)
+
+-- ============================================================================
+-- MAIN
 -- ============================================================================
 
 main :: IO ()
 main = do
   putStrLn "╔═══════════════════════════════════════════════════╗"
-  putStrLn "║      MCTS Chess Engine - Haskell Edition        ║"
+  putStrLn "║      MCTS CHESS ENGINE - HASKELL Edition         ║"
   putStrLn "╚═══════════════════════════════════════════════════╝"
   putStrLn ""
-  putStrLn "Initial position:"
-  print initialPosition
+  printBoard initialPos
+  putStrLn $ "Legal moves from start position: " ++ show (length $ legalMoves initialPos)
   putStrLn ""
-  putStrLn "Legal moves from start:"
-  print $ length $ allMoves initialPosition
+  putStrLn "Running MCTS search demo..."
+  
+  let root = createNode initialPos Nothing
+  let !score = simulate initialPos True
+  printf "Initial position evaluation: %.2f\n" score
+  
   putStrLn ""
-  putStrLn "MCTS ready!"
-
--- ============================================================================
--- SECTION 8: Helpers
--- ============================================================================
-
-applyMove :: Position -> Move -> Position
-applyMove pos m = pos { board = newBoard, toMove = otherColor (toMove pos) }
-  where
-    newBoard = board pos // [(to m, board pos ! from m), (from m, Nothing)]
-    otherColor White = Black
-    otherColor Black = White
-
-maximumBy :: (a -> a -> Ordering) -> [a] -> a
-maximumBy _ [] = error "maximumBy on empty list"
-maximumBy cmp (x:xs) = foldl (\a b -> if cmp a b == GT then a else b) x xs
-
-randomIO :: IO Int
-randomIO = randomR (0, 100) (mkStdGen 42)
-
--- End of MCTSChess.hs
+  putStrLn "Engine ready!"
