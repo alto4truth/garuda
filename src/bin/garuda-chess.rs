@@ -1,5 +1,5 @@
 use std::fs;
-use garuda::chess::{Engine, GameStatus, Position, SearchConfig, TinyNeuralModel};
+use garuda::chess::{Engine, GameStatus, MctsConfig, MctsEngine, Position, SearchConfig, TinyNeuralModel};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 fn print_usage() {
     eprintln!("usage:");
     eprintln!("  garuda-chess bestmove [fen] [garuda_depth] [garuda_quiescence]");
+    eprintln!("  garuda-chess bestmove-mcts [fen] [simulations] [cpuct]");
     eprintln!("  garuda-chess apply <fen> <uci>");
     eprintln!("  garuda-chess status [fen]");
     eprintln!("  garuda-chess match-uci <engine_command> [max_plies_or_0] [movetime_ms] [garuda_color] [garuda_depth] [garuda_quiescence]");
@@ -157,6 +158,18 @@ fn build_search_config(depth: usize, quiescence_depth: usize) -> SearchConfig {
         quiescence_depth,
         ..SearchConfig::default()
     }
+}
+
+fn build_mcts_config(simulations: usize, cpuct: f32) -> MctsConfig {
+    MctsConfig {
+        simulations,
+        cpuct,
+        ..MctsConfig::default()
+    }
+}
+
+fn parse_f32_arg(value: Option<String>, default: f32) -> f32 {
+    value.and_then(|text| text.parse::<f32>().ok()).unwrap_or(default)
 }
 
 fn load_openings(path: &str) -> Result<Vec<Position>, String> {
@@ -310,6 +323,31 @@ fn main() {
             let engine = Engine::new(
                 TinyNeuralModel::default(),
                 build_search_config(garuda_depth, garuda_quiescence),
+            );
+            match engine.best_move(&position) {
+                Some(chess_move) => println!("{}", chess_move.uci()),
+                None => {
+                    eprintln!("no move available");
+                    std::process::exit(3);
+                }
+            }
+        }
+        "bestmove-mcts" => {
+            let fen = args
+                .next()
+                .unwrap_or_else(|| Position::STARTPOS_FEN.to_string());
+            let simulations = parse_usize_arg(args.next(), MctsConfig::default().simulations);
+            let cpuct = parse_f32_arg(args.next(), MctsConfig::default().cpuct);
+            let position = match Position::from_fen(&fen) {
+                Ok(position) => position,
+                Err(error) => {
+                    eprintln!("invalid fen: {error}");
+                    std::process::exit(2);
+                }
+            };
+            let engine = MctsEngine::new(
+                TinyNeuralModel::default(),
+                build_mcts_config(simulations, cpuct),
             );
             match engine.best_move(&position) {
                 Some(chess_move) => println!("{}", chess_move.uci()),

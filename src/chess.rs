@@ -14,7 +14,7 @@ const PROMOTION_PIECES: [PieceKind; 4] = [
     PieceKind::Knight,
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {
     White,
     Black,
@@ -44,7 +44,7 @@ impl Color {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PieceKind {
     Pawn,
     Knight,
@@ -99,7 +99,7 @@ impl PieceKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Piece {
     pub color: Color,
     pub kind: PieceKind,
@@ -190,7 +190,7 @@ impl fmt::Display for Square {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ChessMove {
     pub from: Square,
     pub to: Square,
@@ -1496,6 +1496,197 @@ impl Default for SearchConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MctsConfig {
+    pub cpuct: f32,
+    pub simulations: usize,
+    pub root_policy_width: usize,
+}
+
+impl Default for MctsConfig {
+    fn default() -> Self {
+        Self {
+            cpuct: 1.35,
+            simulations: 128,
+            root_policy_width: DEFAULT_POLICY_WIDTH,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct MctsChildStats {
+    prior: f32,
+    visits: u32,
+    value_sum: f32,
+}
+
+impl MctsChildStats {
+    fn mean_value(&self) -> f32 {
+        if self.visits == 0 {
+            0.0
+        } else {
+            self.value_sum / self.visits as f32
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct MctsNode {
+    visits: u32,
+    children: HashMap<ChessMove, MctsChildStats>,
+}
+
+pub struct MctsEngine<M: PolicyValueModel> {
+    model: M,
+    config: MctsConfig,
+    tree: RefCell<HashMap<u64, MctsNode>>,
+}
+
+impl<M: PolicyValueModel> MctsEngine<M> {
+    pub fn new(model: M, config: MctsConfig) -> Self {
+        Self {
+            model,
+            config,
+            tree: RefCell::new(HashMap::new()),
+        }
+    }
+
+    pub fn evaluate(&self, position: &Position) -> PolicyValue {
+        let mut evaluation = self.model.evaluate(position);
+        evaluation.policy.truncate(self.config.root_policy_width);
+        evaluation
+    }
+
+    pub fn best_move(&self, position: &Position) -> Option<ChessMove> {
+        let repetition_history = [position.repetition_key()];
+        self.best_move_with_history(position, &repetition_history)
+    }
+
+    pub fn best_move_with_history(
+        &self,
+        position: &Position,
+        repetition_history: &[u64],
+    ) -> Option<ChessMove> {
+        let legal_moves = position.legal_moves();
+        if legal_moves.is_empty() {
+            return None;
+        }
+
+        self.tree.borrow_mut().clear();
+        for _ in 0..self.config.simulations.max(1) {
+            let mut history = repetition_history.to_vec();
+            let _ = self.simulate(position, &mut history);
+        }
+
+        let root_key = position.zobrist_like_key();
+        let tree = self.tree.borrow();
+        let root = tree.get(&root_key)?;
+        root.children
+            .iter()
+            .max_by(|a, b| {
+                a.1.visits
+                    .cmp(&b.1.visits)
+                    .then_with(|| {
+                        a.1.mean_value()
+                            .partial_cmp(&b.1.mean_value())
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+            })
+            .map(|(chess_move, _)| chess_move.clone())
+    }
+
+    fn simulate(&self, position: &Position, repetition_history: &mut Vec<u64>) -> f32 {
+        match position.game_status_with_history(repetition_history) {
+            GameStatus::Checkmate { loser } => {
+                return if loser == position.side_to_move() { -1.0 } else { 1.0 };
+            }
+            GameStatus::Stalemate { .. }
+            | GameStatus::DrawByFiftyMoveRule
+            | GameStatus::DrawByRepetition => return 0.0,
+            GameStatus::Ongoing => {}
+        }
+
+        let node_key = position.zobrist_like_key();
+        let legal_moves = position.legal_moves();
+        if legal_moves.is_empty() {
+            return 0.0;
+        }
+
+        let needs_expansion = {
+            let tree = self.tree.borrow();
+            !tree.contains_key(&node_key)
+        };
+        if needs_expansion {
+            let evaluation = self.evaluate(position);
+            let mut children = HashMap::new();
+            for chess_move in legal_moves {
+                let prior = evaluation
+                    .policy
+                    .iter()
+                    .find(|entry| entry.chess_move == chess_move)
+                    .map(|entry| entry.prior)
+                    .unwrap_or(1.0 / evaluation.policy.len().max(1) as f32);
+                children.insert(
+                    chess_move,
+                    MctsChildStats {
+                        prior,
+                        visits: 0,
+                        value_sum: 0.0,
+                    },
+                );
+            }
+            self.tree.borrow_mut().insert(
+                node_key,
+                MctsNode {
+                    visits: 0,
+                    children,
+                },
+            );
+            return evaluation.value;
+        }
+
+        let selected_move = {
+            let tree = self.tree.borrow();
+            let node = tree.get(&node_key).expect("node should exist");
+            let parent_visits = node.visits.max(1) as f32;
+            node.children
+                .iter()
+                .max_by(|a, b| {
+                    let a_score = self.puct_score(parent_visits, a.1);
+                    let b_score = self.puct_score(parent_visits, b.1);
+                    a_score
+                        .partial_cmp(&b_score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .map(|(chess_move, _)| chess_move.clone())
+                .expect("expanded node must have children")
+        };
+
+        let child = position.apply_move(&selected_move);
+        repetition_history.push(child.repetition_key());
+        let child_value = -self.simulate(&child, repetition_history);
+        repetition_history.pop();
+
+        let mut tree = self.tree.borrow_mut();
+        let node = tree.get_mut(&node_key).expect("node should exist");
+        node.visits += 1;
+        let child_stats = node
+            .children
+            .get_mut(&selected_move)
+            .expect("selected child should exist");
+        child_stats.visits += 1;
+        child_stats.value_sum += child_value;
+        child_value
+    }
+
+    fn puct_score(&self, parent_visits: f32, child: &MctsChildStats) -> f32 {
+        let exploration = self.config.cpuct
+            * child.prior
+            * (parent_visits.sqrt() / (1.0 + child.visits as f32));
+        child.mean_value() + exploration
+    }
+}
+
 pub struct Engine<M: PolicyValueModel> {
     model: M,
     config: SearchConfig,
@@ -1832,6 +2023,19 @@ mod tests {
     }
 
     #[test]
+    fn mcts_engine_returns_a_move() {
+        let engine = MctsEngine::new(
+            TinyNeuralModel::default(),
+            MctsConfig {
+                simulations: 16,
+                ..MctsConfig::default()
+            },
+        );
+        let best_move = engine.best_move(&Position::starting_position());
+        assert!(best_move.is_some());
+    }
+
+    #[test]
     fn engine_finds_mate_in_one() {
         let position = Position::from_fen("7k/R7/6K1/8/8/8/8/8 w - - 0 1").unwrap();
         let engine = Engine::new(
@@ -1839,6 +2043,20 @@ mod tests {
             SearchConfig {
                 max_depth: 2,
                 ..SearchConfig::default()
+            },
+        );
+        let best_move = engine.best_move(&position).unwrap();
+        assert_eq!(best_move.uci(), "a7a8");
+    }
+
+    #[test]
+    fn mcts_engine_finds_mate_in_one() {
+        let position = Position::from_fen("7k/R7/6K1/8/8/8/8/8 w - - 0 1").unwrap();
+        let engine = MctsEngine::new(
+            TinyNeuralModel::default(),
+            MctsConfig {
+                simulations: 64,
+                ..MctsConfig::default()
             },
         );
         let best_move = engine.best_move(&position).unwrap();
