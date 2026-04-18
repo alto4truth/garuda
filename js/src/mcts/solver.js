@@ -3,8 +3,8 @@ const { Node, Tree } = require('./tree');
 class MCTSTokenSolver {
   constructor() {
     this.explorationConstant = 1.414;
-    this.maxIterations = 10000;
-    this.maxDepth = 50;
+    this.maxIterations = 512;
+    this.maxDepth = 24;
   }
 
   solve(problem) {
@@ -72,14 +72,46 @@ class MCTSTokenSolver {
     newTokens.push({ type: 'operator', value: action, precedence: 2 });
 
     const currentValue = this.evaluate(node.state.expression);
-    const result = this.applyOperation(currentValue, action);
+    const operand = this.chooseOperand(currentValue, action, problem);
+    const result = this.applyOperation(currentValue, action, operand);
 
-    newTokens.push({ type: 'number', value: result.toString() });
+    newTokens.push({ type: 'number', value: operand.toString() });
 
     const newExpression = newTokens.map(t => t.value).join(' ');
 
     const newState = { tokens: newTokens, expression: newExpression };
     return node.addChild(newState);
+  }
+
+  chooseOperand(currentValue, action, problem) {
+    const target = typeof problem.target === 'number' ? problem.target : currentValue;
+    const distance = target - currentValue;
+
+    switch (action) {
+      case '+':
+        return distance !== 0 ? distance : Math.max(1, Math.abs(currentValue));
+      case '-':
+        return distance !== 0 ? -distance : 1;
+      case '*':
+        if (currentValue !== 0 && target % currentValue === 0) {
+          return target / currentValue;
+        }
+        return target >= currentValue ? 2 : 0.5;
+      case '/':
+        if (target !== 0 && currentValue % target === 0) {
+          return currentValue / target;
+        }
+        return 2;
+      case '**':
+        return 2;
+      case 'sqrt':
+        return 0;
+      case 'sin':
+      case 'cos':
+        return 0;
+      default:
+        return distance !== 0 ? distance : 1;
+    }
   }
 
   simulate(node, problem) {

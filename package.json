@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "jest",
+    "test": "node js/src/tests/all.test.js",
     "lint": "eslint src --ext .ts"
   },
   "keywords": [

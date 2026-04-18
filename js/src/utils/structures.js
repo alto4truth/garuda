@@ -207,12 +207,13 @@ class Cache {
   constructor(ttl = 60000) {
     this.ttl = ttl;
     this.store = new Map();
-    setInterval(() => {
+    const cleanup = setInterval(() => {
       const now = Date.now();
       for (const [key, item] of this.store) {
         if (now > item.expiry) this.store.delete(key);
       }
     }, ttl / 2);
+    if (typeof cleanup.unref === 'function') cleanup.unref();
   }
 
   set(key, value) {
