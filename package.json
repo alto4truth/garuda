@@ -9,6 +9,12 @@
     "test": "jest",
     "lint": "eslint src --ext .ts"
   },
-  "keywords": ["analysis", "static-analysis"],
-  "license": "MIT"
+  "keywords": [
+    "analysis",
+    "static-analysis"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "chess.js": "^1.4.0"
+  }
 }

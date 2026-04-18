@@ -2,6 +2,8 @@ const { ZKProof, MerkleTree, Blockchain, ZKPBlockchain } = require('../crypto/bl
 const { P2PNetwork, ZKP2PNetwork, DHT } = require('../p2p/network');
 const { LLVMDataLayer, LLVMTestingHarness } = require('../llvm/datalayer');
 const { LRU, BloomFilter, Graph, Queue, RateLimiter, CircuitBreaker, PubSub, Cache } = require('../utils/structures');
+const { MCTSTokenSolver } = require('../mcts/solver');
+const { Node, Tree } = require('../mcts/tree');
 
 console.log('╔═══════════════════════════════════════════════════╗');
 console.log('║           GARUDA JS TESTS - ALL MODULES          ║');
@@ -225,6 +227,38 @@ test('PubSub publish/subscribe', () => {
   ps.publish('test', 'data');
   ps.publish('test', 'data');
   if (received !== 2) throw new Error('PubSub failed');
+});
+
+console.log('\n═══════════════════════════════════════════════════');
+console.log(`          RESULTS: ${passed} PASSED, ${failed} FAILED`);
+console.log('═══════════════════════════════════════════════════');
+
+console.log('\n=== MCTS: MCTSTokenSolver ===');
+test('MCTSTokenSolver solve', () => {
+  const solver = new MCTSTokenSolver();
+  const problem = { target: 42, start: 10, operations: ['+', '*', '-'] };
+  const result = solver.solve(problem);
+  if (!result) throw new Error('MCTS solve failed');
+});
+
+test('MCTSTokenSolver simple addition', () => {
+  const solver = new MCTSTokenSolver();
+  const problem = { target: 20, start: 10, operations: ['+'] };
+  const result = solver.solve(problem);
+  if (!result) throw new Error('MCTS simple solve failed');
+});
+
+console.log('\n=== MCTS: Tree Node ===');
+test('Tree Node leaf', () => {
+  const node = new Node('test');
+  if (!node.isLeaf()) throw new Error('Node should be leaf');
+});
+
+test('Tree Node addChild', () => {
+  const node = new Node('parent');
+  const child = node.addChild('child');
+  if (!child) throw new Error('Child not added');
+  if (node.children.length !== 1) throw new Error('Children count wrong');
 });
 
 console.log('\n═══════════════════════════════════════════════════');
