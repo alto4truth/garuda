@@ -1,8 +1,8 @@
-use std::fs;
 use garuda::chess::{
     evaluate_nes_fitness, run_nes_step, Engine, GameStatus, MctsConfig, MctsEngine, NesConfig,
     Position, SearchConfig, TinyNeuralModel,
 };
+use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,6 +15,7 @@ fn print_usage() {
     eprintln!("  garuda-chess model-vector");
     eprintln!("  garuda-chess nes-eval [vector_file] [simulations] [cpuct]");
     eprintln!("  garuda-chess nes-step <output_vector_file> [input_vector_file] [population_size] [sigma] [learning_rate] [seed] [simulations] [cpuct]");
+    eprintln!("  garuda-chess nes-train <output_vector_file> [input_vector_file] [generations] [population_size] [sigma] [learning_rate] [seed] [simulations] [cpuct]");
     eprintln!("  garuda-chess apply <fen> <uci>");
     eprintln!("  garuda-chess status [fen]");
     eprintln!("  garuda-chess match-uci <engine_command> [max_plies_or_0] [movetime_ms] [garuda_color] [garuda_depth] [garuda_quiescence]");
@@ -65,7 +66,8 @@ impl UciEngine {
     }
 
     fn command(&mut self, line: &str) -> Result<(), String> {
-        writeln!(self.stdin, "{line}").map_err(|error| format!("failed to write to engine: {error}"))?;
+        writeln!(self.stdin, "{line}")
+            .map_err(|error| format!("failed to write to engine: {error}"))?;
         self.stdin
             .flush()
             .map_err(|error| format!("failed to flush engine stdin: {error}"))?;
@@ -141,11 +143,15 @@ fn format_status(status: GameStatus) -> &'static str {
 }
 
 fn parse_usize_arg(value: Option<String>, default: usize) -> usize {
-    value.and_then(|text| text.parse::<usize>().ok()).unwrap_or(default)
+    value
+        .and_then(|text| text.parse::<usize>().ok())
+        .unwrap_or(default)
 }
 
 fn parse_u64_arg(value: Option<String>, default: u64) -> u64 {
-    value.and_then(|text| text.parse::<u64>().ok()).unwrap_or(default)
+    value
+        .and_then(|text| text.parse::<u64>().ok())
+        .unwrap_or(default)
 }
 
 fn parse_optional_plies_arg(value: Option<String>, default: Option<usize>) -> Option<usize> {
@@ -176,11 +182,14 @@ fn build_mcts_config(simulations: usize, cpuct: f32) -> MctsConfig {
 }
 
 fn parse_f32_arg(value: Option<String>, default: f32) -> f32 {
-    value.and_then(|text| text.parse::<f32>().ok()).unwrap_or(default)
+    value
+        .and_then(|text| text.parse::<f32>().ok())
+        .unwrap_or(default)
 }
 
 fn load_openings(path: &str) -> Result<Vec<Position>, String> {
-    let contents = fs::read_to_string(path).map_err(|error| format!("failed to read openings file: {error}"))?;
+    let contents = fs::read_to_string(path)
+        .map_err(|error| format!("failed to read openings file: {error}"))?;
     let mut openings = Vec::new();
     for (line_index, line) in contents.lines().enumerate() {
         let trimmed = line.trim();
@@ -445,14 +454,14 @@ fn main() {
             };
             let simulations = parse_usize_arg(args.next(), 32);
             let cpuct = parse_f32_arg(args.next(), MctsConfig::default().cpuct);
-            let evaluation = match evaluate_nes_fitness(&vector, build_mcts_config(simulations, cpuct))
-            {
-                Ok(evaluation) => evaluation,
-                Err(error) => {
-                    eprintln!("{error}");
-                    std::process::exit(2);
-                }
-            };
+            let evaluation =
+                match evaluate_nes_fitness(&vector, build_mcts_config(simulations, cpuct)) {
+                    Ok(evaluation) => evaluation,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                };
             println!("fitness {}", evaluation.total_fitness);
             for case in evaluation.cases {
                 println!(
@@ -483,7 +492,8 @@ fn main() {
                 },
                 None => TinyNeuralModel::default().parameter_vector(),
             };
-            let population_size = parse_usize_arg(args.next(), NesConfig::default().population_size);
+            let population_size =
+                parse_usize_arg(args.next(), NesConfig::default().population_size);
             let sigma = parse_f32_arg(args.next(), NesConfig::default().sigma);
             let learning_rate = parse_f32_arg(args.next(), NesConfig::default().learning_rate);
             let seed = parse_u64_arg(args.next(), NesConfig::default().seed);
@@ -495,8 +505,11 @@ fn main() {
                 learning_rate,
                 seed,
             };
-            let result = match run_nes_step(&base_vector, nes_config, build_mcts_config(simulations, cpuct))
-            {
+            let result = match run_nes_step(
+                &base_vector,
+                nes_config,
+                build_mcts_config(simulations, cpuct),
+            ) {
                 Ok(result) => result,
                 Err(error) => {
                     eprintln!("{error}");
@@ -517,6 +530,80 @@ fn main() {
             println!("best_candidate_fitness {}", result.best_candidate_fitness);
             println!("updated_fitness {}", result.updated_fitness);
             println!("evaluations {}", result.evaluations);
+            println!("output_vector {}", output_vector_file);
+        }
+        "nes-train" => {
+            let Some(output_vector_file) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let mut vector = match args.next() {
+                Some(input_vector_file) => match load_parameter_vector(&input_vector_file) {
+                    Ok(vector) => vector,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                },
+                None => TinyNeuralModel::default().parameter_vector(),
+            };
+            let generations = parse_usize_arg(args.next(), 8);
+            let population_size =
+                parse_usize_arg(args.next(), NesConfig::default().population_size);
+            let sigma = parse_f32_arg(args.next(), NesConfig::default().sigma);
+            let learning_rate = parse_f32_arg(args.next(), NesConfig::default().learning_rate);
+            let base_seed = parse_u64_arg(args.next(), NesConfig::default().seed);
+            let simulations = parse_usize_arg(args.next(), 32);
+            let cpuct = parse_f32_arg(args.next(), MctsConfig::default().cpuct);
+            let mcts_config = build_mcts_config(simulations, cpuct);
+            let mut total_evaluations = 0usize;
+
+            for generation in 0..generations.max(1) {
+                let result = match run_nes_step(
+                    &vector,
+                    NesConfig {
+                        population_size,
+                        sigma,
+                        learning_rate,
+                        seed: base_seed.wrapping_add(generation as u64),
+                    },
+                    mcts_config,
+                ) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                };
+                total_evaluations += result.evaluations;
+                println!(
+                    "generation {} initial_fitness={} best_candidate_fitness={} updated_fitness={}",
+                    generation + 1,
+                    result.initial_fitness,
+                    result.best_candidate_fitness,
+                    result.updated_fitness
+                );
+                vector = result.vector;
+            }
+
+            let final_evaluation = match evaluate_nes_fitness(&vector, mcts_config) {
+                Ok(evaluation) => evaluation,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+            };
+            let line = vector
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            if let Err(error) = fs::write(&output_vector_file, format!("{line}\n")) {
+                eprintln!("failed to write output vector: {error}");
+                std::process::exit(2);
+            }
+            println!("final_fitness {}", final_evaluation.total_fitness);
+            println!("total_evaluations {}", total_evaluations);
             println!("output_vector {}", output_vector_file);
         }
         "status" => {

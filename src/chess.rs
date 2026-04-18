@@ -231,13 +231,16 @@ impl ChessMove {
         }
         let from = Square::from_algebraic(&uci[0..2])?;
         let to = Square::from_algebraic(&uci[2..4])?;
-        let promotion = uci.as_bytes().get(4).and_then(|symbol| match symbol.to_ascii_lowercase() {
-            b'n' => Some(PieceKind::Knight),
-            b'b' => Some(PieceKind::Bishop),
-            b'r' => Some(PieceKind::Rook),
-            b'q' => Some(PieceKind::Queen),
-            _ => None,
-        });
+        let promotion =
+            uci.as_bytes()
+                .get(4)
+                .and_then(|symbol| match symbol.to_ascii_lowercase() {
+                    b'n' => Some(PieceKind::Knight),
+                    b'b' => Some(PieceKind::Bishop),
+                    b'r' => Some(PieceKind::Rook),
+                    b'q' => Some(PieceKind::Queen),
+                    _ => None,
+                });
         Some(Self {
             from,
             to,
@@ -464,8 +467,8 @@ impl Position {
                 if file >= 8 {
                     return Err("file overflow in FEN rank".to_string());
                 }
-                let piece =
-                    Piece::from_fen_symbol(symbol).ok_or_else(|| "invalid piece in FEN".to_string())?;
+                let piece = Piece::from_fen_symbol(symbol)
+                    .ok_or_else(|| "invalid piece in FEN".to_string())?;
                 let square = Square::from_file_rank(file, board_rank)
                     .ok_or_else(|| "invalid square while decoding FEN".to_string())?;
                 position.set_piece(square, Some(piece));
@@ -638,8 +641,7 @@ impl Position {
             while (0..8).contains(&file) && (0..8).contains(&rank) {
                 let square = Square::from_file_rank(file as u8, rank as u8).unwrap();
                 if let Some(piece) = self.piece_at(square) {
-                    if piece.color == by_color
-                        && (piece.kind == primary || piece.kind == secondary)
+                    if piece.color == by_color && (piece.kind == primary || piece.kind == secondary)
                     {
                         return true;
                     }
@@ -693,11 +695,8 @@ impl Position {
                 }
                 let castle_distance = chess_move.to.file() as i8 - chess_move.from.file() as i8;
                 if castle_distance.abs() == 2 {
-                    let (rook_from_file, rook_to_file) = if castle_distance > 0 {
-                        (7, 5)
-                    } else {
-                        (0, 3)
-                    };
+                    let (rook_from_file, rook_to_file) =
+                        if castle_distance > 0 { (7, 5) } else { (0, 3) };
                     let rank = chess_move.from.rank();
                     let rook_from = Square::from_file_rank(rook_from_file, rank).unwrap();
                     let rook_to = Square::from_file_rank(rook_to_file, rank).unwrap();
@@ -726,15 +725,20 @@ impl Position {
             } else {
                 None
             };
-            next.halfmove_clock = if matches!(piece.kind, PieceKind::Pawn) || captured_piece.is_some() {
-                0
-            } else {
-                next.halfmove_clock.saturating_add(1)
-            };
+            next.halfmove_clock =
+                if matches!(piece.kind, PieceKind::Pawn) || captured_piece.is_some() {
+                    0
+                } else {
+                    next.halfmove_clock.saturating_add(1)
+                };
         }
         if let Some(captured_piece) = captured_piece {
             if matches!(captured_piece.kind, PieceKind::Rook) {
-                match (captured_piece.color, chess_move.to.file(), chess_move.to.rank()) {
+                match (
+                    captured_piece.color,
+                    chess_move.to.file(),
+                    chess_move.to.rank(),
+                ) {
                     (Color::White, 0, 0) => next.castling_rights.white_queenside = false,
                     (Color::White, 7, 0) => next.castling_rights.white_kingside = false,
                     (Color::Black, 0, 7) => next.castling_rights.black_queenside = false,
@@ -850,11 +854,26 @@ impl Position {
             match piece.kind {
                 PieceKind::Pawn => self.push_pawn_moves(square, piece.color, &mut moves),
                 PieceKind::Knight => self.push_knight_moves(square, &mut moves),
-                PieceKind::Bishop => self.push_slider_moves(square, &[(1, 1), (1, -1), (-1, 1), (-1, -1)], &mut moves),
-                PieceKind::Rook => self.push_slider_moves(square, &[(1, 0), (-1, 0), (0, 1), (0, -1)], &mut moves),
+                PieceKind::Bishop => self.push_slider_moves(
+                    square,
+                    &[(1, 1), (1, -1), (-1, 1), (-1, -1)],
+                    &mut moves,
+                ),
+                PieceKind::Rook => {
+                    self.push_slider_moves(square, &[(1, 0), (-1, 0), (0, 1), (0, -1)], &mut moves)
+                }
                 PieceKind::Queen => self.push_slider_moves(
                     square,
-                    &[(1, 1), (1, -1), (-1, 1), (-1, -1), (1, 0), (-1, 0), (0, 1), (0, -1)],
+                    &[
+                        (1, 1),
+                        (1, -1),
+                        (-1, 1),
+                        (-1, -1),
+                        (1, 0),
+                        (-1, 0),
+                        (0, 1),
+                        (0, -1),
+                    ],
                     &mut moves,
                 ),
                 PieceKind::King => self.push_king_moves(square, &mut moves),
@@ -963,8 +982,12 @@ impl Position {
             .sum::<f32>();
 
         let king_safety_score = match self.game_status() {
-            GameStatus::Checkmate { loser: Color::White } => -10_000.0,
-            GameStatus::Checkmate { loser: Color::Black } => 10_000.0,
+            GameStatus::Checkmate {
+                loser: Color::White,
+            } => -10_000.0,
+            GameStatus::Checkmate {
+                loser: Color::Black,
+            } => 10_000.0,
             GameStatus::Stalemate { .. }
             | GameStatus::DrawByFiftyMoveRule
             | GameStatus::DrawByRepetition => 0.0,
@@ -1140,7 +1163,13 @@ impl Position {
         key
     }
 
-    fn push_move_if_valid(&self, from: Square, file: i8, rank: i8, moves: &mut Vec<ChessMove>) -> bool {
+    fn push_move_if_valid(
+        &self,
+        from: Square,
+        file: i8,
+        rank: i8,
+        moves: &mut Vec<ChessMove>,
+    ) -> bool {
         if !(0..8).contains(&file) || !(0..8).contains(&rank) {
             return false;
         }
@@ -1189,7 +1218,12 @@ impl Position {
                 if df == 0 && dr == 0 {
                     continue;
                 }
-                self.push_move_if_valid(from, from.file() as i8 + df, from.rank() as i8 + dr, moves);
+                self.push_move_if_valid(
+                    from,
+                    from.file() as i8 + df,
+                    from.rank() as i8 + dr,
+                    moves,
+                );
             }
         }
         self.push_castling_moves(from, moves);
@@ -1272,8 +1306,12 @@ impl Position {
             return;
         }
         if kingside_right
-            && self.piece_at(Square::from_file_rank(5, rank).unwrap()).is_none()
-            && self.piece_at(Square::from_file_rank(6, rank).unwrap()).is_none()
+            && self
+                .piece_at(Square::from_file_rank(5, rank).unwrap())
+                .is_none()
+            && self
+                .piece_at(Square::from_file_rank(6, rank).unwrap())
+                .is_none()
             && self.piece_at(Square::from_file_rank(7, rank).unwrap())
                 == Some(Piece {
                     color,
@@ -1282,12 +1320,21 @@ impl Position {
             && !self.is_square_attacked(Square::from_file_rank(5, rank).unwrap(), color.opposite())
             && !self.is_square_attacked(Square::from_file_rank(6, rank).unwrap(), color.opposite())
         {
-            moves.push(ChessMove::new(from, Square::from_file_rank(6, rank).unwrap()));
+            moves.push(ChessMove::new(
+                from,
+                Square::from_file_rank(6, rank).unwrap(),
+            ));
         }
         if queenside_right
-            && self.piece_at(Square::from_file_rank(1, rank).unwrap()).is_none()
-            && self.piece_at(Square::from_file_rank(2, rank).unwrap()).is_none()
-            && self.piece_at(Square::from_file_rank(3, rank).unwrap()).is_none()
+            && self
+                .piece_at(Square::from_file_rank(1, rank).unwrap())
+                .is_none()
+            && self
+                .piece_at(Square::from_file_rank(2, rank).unwrap())
+                .is_none()
+            && self
+                .piece_at(Square::from_file_rank(3, rank).unwrap())
+                .is_none()
             && self.piece_at(Square::from_file_rank(0, rank).unwrap())
                 == Some(Piece {
                     color,
@@ -1296,7 +1343,10 @@ impl Position {
             && !self.is_square_attacked(Square::from_file_rank(3, rank).unwrap(), color.opposite())
             && !self.is_square_attacked(Square::from_file_rank(2, rank).unwrap(), color.opposite())
         {
-            moves.push(ChessMove::new(from, Square::from_file_rank(2, rank).unwrap()));
+            moves.push(ChessMove::new(
+                from,
+                Square::from_file_rank(2, rank).unwrap(),
+            ));
         }
     }
 }
@@ -1406,16 +1456,15 @@ impl TinyNeuralModel {
                 Color::Black => -1.0,
             };
             let index = square.0 as usize;
-            features[index] = sign
-                * match piece.kind {
+            features[index] =
+                sign * match piece.kind {
                     PieceKind::Pawn => 1.0,
                     PieceKind::Knight => 2.0,
                     PieceKind::Bishop => 3.0,
                     PieceKind::Rook => 4.0,
                     PieceKind::Queen => 5.0,
                     PieceKind::King => 6.0,
-                }
-                / 6.0;
+                } / 6.0;
         }
         features[95] = match position.side_to_move() {
             Color::White => 1.0,
@@ -1444,7 +1493,11 @@ impl TinyNeuralModel {
         features[1] = chess_move.from.rank() as f32 / 7.0;
         features[2] = chess_move.to.file() as f32 / 7.0;
         features[3] = chess_move.to.rank() as f32 / 7.0;
-        features[4] = if chess_move.promotion.is_some() { 1.0 } else { 0.0 };
+        features[4] = if chess_move.promotion.is_some() {
+            1.0
+        } else {
+            0.0
+        };
         features[5] = ply_hint;
         features
     }
@@ -1658,9 +1711,7 @@ struct XorShift64 {
 
 impl XorShift64 {
     fn new(seed: u64) -> Self {
-        Self {
-            state: seed.max(1),
-        }
+        Self { state: seed.max(1) }
     }
 
     fn next_u64(&mut self) -> u64 {
@@ -1701,18 +1752,30 @@ pub fn evaluate_nes_fitness(
         let preferred_policy_mass = evaluation
             .policy
             .iter()
-            .filter(|entry| nes_case.preferred.iter().any(|uci| *uci == entry.chess_move.uci()))
+            .filter(|entry| {
+                nes_case
+                    .preferred
+                    .iter()
+                    .any(|uci| *uci == entry.chess_move.uci())
+            })
             .map(|entry| entry.prior)
             .sum::<f32>();
         let avoided_policy_mass = evaluation
             .policy
             .iter()
-            .filter(|entry| nes_case.avoided.iter().any(|uci| *uci == entry.chess_move.uci()))
+            .filter(|entry| {
+                nes_case
+                    .avoided
+                    .iter()
+                    .any(|uci| *uci == entry.chess_move.uci())
+            })
             .map(|entry| entry.prior)
             .sum::<f32>();
         let value_alignment = evaluation.value * nes_case.target_value;
         let engine = MctsEngine::new(model.clone(), mcts_config);
-        let chosen_move = engine.best_move(&position).map(|chess_move| chess_move.uci());
+        let chosen_move = engine
+            .best_move(&position)
+            .map(|chess_move| chess_move.uci());
         let preferred_hit = chosen_move
             .as_ref()
             .map(|uci| nes_case.preferred.iter().any(|candidate| candidate == uci))
@@ -1903,6 +1966,7 @@ impl<M: PolicyValueModel> MctsEngine<M> {
                             .partial_cmp(&b.1.mean_value())
                             .unwrap_or(std::cmp::Ordering::Equal)
                     })
+                    .then_with(|| a.0.uci().cmp(&b.0.uci()))
             })
             .map(|(chess_move, _)| chess_move.clone())
     }
@@ -1910,7 +1974,11 @@ impl<M: PolicyValueModel> MctsEngine<M> {
     fn simulate(&self, position: &Position, repetition_history: &mut Vec<u64>) -> f32 {
         match position.game_status_with_history(repetition_history) {
             GameStatus::Checkmate { loser } => {
-                return if loser == position.side_to_move() { -1.0 } else { 1.0 };
+                return if loser == position.side_to_move() {
+                    -1.0
+                } else {
+                    1.0
+                };
             }
             GameStatus::Stalemate { .. }
             | GameStatus::DrawByFiftyMoveRule
@@ -1969,6 +2037,7 @@ impl<M: PolicyValueModel> MctsEngine<M> {
                     a_score
                         .partial_cmp(&b_score)
                         .unwrap_or(std::cmp::Ordering::Equal)
+                        .then_with(|| a.0.uci().cmp(&b.0.uci()))
                 })
                 .map(|(chess_move, _)| chess_move.clone())
                 .expect("expanded node must have children")
@@ -1992,9 +2061,8 @@ impl<M: PolicyValueModel> MctsEngine<M> {
     }
 
     fn puct_score(&self, parent_visits: f32, child: &MctsChildStats) -> f32 {
-        let exploration = self.config.cpuct
-            * child.prior
-            * (parent_visits.sqrt() / (1.0 + child.visits as f32));
+        let exploration =
+            self.config.cpuct * child.prior * (parent_visits.sqrt() / (1.0 + child.visits as f32));
         child.mean_value() + exploration
     }
 }
@@ -2087,13 +2155,23 @@ impl<M: PolicyValueModel> Engine<M> {
             })
             .collect();
         scored_moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored_moves.into_iter().map(|(chess_move, _)| chess_move).collect()
+        scored_moves
+            .into_iter()
+            .map(|(chess_move, _)| chess_move)
+            .collect()
     }
 
-    fn ordered_root_moves(&self, position: &Position, principal_move: Option<ChessMove>) -> Vec<ChessMove> {
+    fn ordered_root_moves(
+        &self,
+        position: &Position,
+        principal_move: Option<ChessMove>,
+    ) -> Vec<ChessMove> {
         let mut moves = self.ordered_moves(position);
         if let Some(principal_move) = principal_move {
-            if let Some(index) = moves.iter().position(|chess_move| *chess_move == principal_move) {
+            if let Some(index) = moves
+                .iter()
+                .position(|chess_move| *chess_move == principal_move)
+            {
                 moves.swap(0, index);
             }
         }
@@ -2275,7 +2353,9 @@ impl<M: PolicyValueModel> Engine<M> {
             .filter(|chess_move| {
                 chess_move.promotion.is_some()
                     || self.is_capture(position, chess_move)
-                    || position.apply_move(chess_move).is_in_check(position.side_to_move().opposite())
+                    || position
+                        .apply_move(chess_move)
+                        .is_in_check(position.side_to_move().opposite())
             })
             .collect()
     }
@@ -2298,8 +2378,12 @@ mod tests {
     fn starting_position_has_pieces() {
         let position = Position::starting_position();
         assert_eq!(position.side_to_move(), Color::White);
-        assert!(position.piece_at(Square::from_file_rank(4, 0).unwrap()).is_some());
-        assert!(position.piece_at(Square::from_file_rank(4, 7).unwrap()).is_some());
+        assert!(position
+            .piece_at(Square::from_file_rank(4, 0).unwrap())
+            .is_some());
+        assert!(position
+            .piece_at(Square::from_file_rank(4, 7).unwrap())
+            .is_some());
     }
 
     #[test]
@@ -2426,11 +2510,15 @@ mod tests {
     fn san_formats_basic_pawn_and_piece_moves() {
         let position = Position::starting_position();
         assert_eq!(
-            position.san_for_move(&ChessMove::from_uci("e2e4").unwrap()).as_deref(),
+            position
+                .san_for_move(&ChessMove::from_uci("e2e4").unwrap())
+                .as_deref(),
             Some("e4")
         );
         assert_eq!(
-            position.san_for_move(&ChessMove::from_uci("g1f3").unwrap()).as_deref(),
+            position
+                .san_for_move(&ChessMove::from_uci("g1f3").unwrap())
+                .as_deref(),
             Some("Nf3")
         );
     }
@@ -2439,7 +2527,9 @@ mod tests {
     fn san_formats_castling_and_promotion() {
         let castling = Position::from_fen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1").unwrap();
         assert_eq!(
-            castling.san_for_move(&ChessMove::from_uci("e1g1").unwrap()).as_deref(),
+            castling
+                .san_for_move(&ChessMove::from_uci("e1g1").unwrap())
+                .as_deref(),
             Some("O-O")
         );
 
@@ -2511,7 +2601,13 @@ mod tests {
             position.repetition_key(),
         ];
         assert_eq!(
-            engine.negamax(&position, 1, f32::NEG_INFINITY, f32::INFINITY, &repetition_history),
+            engine.negamax(
+                &position,
+                1,
+                f32::NEG_INFINITY,
+                f32::INFINITY,
+                &repetition_history
+            ),
             0.0
         );
     }
@@ -2521,7 +2617,10 @@ mod tests {
         let model = TinyNeuralModel::default();
         assert_eq!(
             model.parameter_count(),
-            (TINY_INPUT_SIZE * TINY_HIDDEN_SIZE) + TINY_HIDDEN_SIZE + TINY_HIDDEN_SIZE + 1
+            (TINY_INPUT_SIZE * TINY_HIDDEN_SIZE)
+                + TINY_HIDDEN_SIZE
+                + TINY_HIDDEN_SIZE
+                + 1
                 + (TINY_HIDDEN_SIZE * TINY_MOVE_FEATURES)
                 + TINY_MOVE_FEATURES
         );
@@ -2549,6 +2648,29 @@ mod tests {
         .unwrap();
         assert_eq!(evaluation.cases.len(), NES_CASES.len());
         assert!(evaluation.total_fitness.is_finite());
+    }
+
+    #[test]
+    fn nes_fitness_is_repeatable_for_same_vector() {
+        let vector = TinyNeuralModel::default().parameter_vector();
+        let config = MctsConfig {
+            simulations: 8,
+            ..MctsConfig::default()
+        };
+        let first = evaluate_nes_fitness(&vector, config).unwrap();
+        let second = evaluate_nes_fitness(&vector, config).unwrap();
+        assert_eq!(first.total_fitness, second.total_fitness);
+        let first_moves = first
+            .cases
+            .iter()
+            .map(|case| case.chosen_move.clone())
+            .collect::<Vec<_>>();
+        let second_moves = second
+            .cases
+            .iter()
+            .map(|case| case.chosen_move.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(first_moves, second_moves);
     }
 
     #[test]
@@ -2605,7 +2727,8 @@ mod tests {
     #[test]
     fn preserves_castling_and_en_passant_in_fen() {
         let position =
-            Position::from_fen("rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1").unwrap();
+            Position::from_fen("rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1")
+                .unwrap();
         assert_eq!(
             position.castling_rights(),
             CastlingRights {
@@ -2627,7 +2750,9 @@ mod tests {
         let position = Position::from_fen("4k3/8/8/8/8/8/4r3/4K3 w - - 0 1").unwrap();
         assert!(position.is_in_check(Color::White));
         let moves = position.legal_moves();
-        assert!(moves.iter().all(|chess_move| chess_move.from == Square::from_algebraic("e1").unwrap()));
+        assert!(moves
+            .iter()
+            .all(|chess_move| chess_move.from == Square::from_algebraic("e1").unwrap()));
         assert!(moves.iter().any(|chess_move| chess_move.uci() == "e1e2"));
         assert!(!moves.iter().any(|chess_move| chess_move.uci() == "e1d2"));
     }
@@ -2652,7 +2777,9 @@ mod tests {
                 kind: PieceKind::Knight,
             })
         );
-        assert!(next.piece_at(Square::from_file_rank(1, 0).unwrap()).is_none());
+        assert!(next
+            .piece_at(Square::from_file_rank(1, 0).unwrap())
+            .is_none());
     }
 
     #[test]
@@ -2681,8 +2808,7 @@ mod tests {
 
     #[test]
     fn generates_and_applies_en_passant() {
-        let position =
-            Position::from_fen("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1").unwrap();
+        let position = Position::from_fen("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1").unwrap();
         let moves = position.legal_moves();
         assert!(moves.iter().any(|chess_move| chess_move.uci() == "e5d6"));
 
@@ -2694,7 +2820,9 @@ mod tests {
                 kind: PieceKind::Pawn,
             })
         );
-        assert!(next.piece_at(Square::from_algebraic("d5").unwrap()).is_none());
+        assert!(next
+            .piece_at(Square::from_algebraic("d5").unwrap())
+            .is_none());
         assert_eq!(next.to_fen(), "4k3/8/3P4/8/8/8/8/4K3 b - - 0 1");
     }
 
