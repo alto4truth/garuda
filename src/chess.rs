@@ -205,10 +205,59 @@ pub struct PolicyValue {
     pub policy: Vec<PolicyEntry>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CastlingRights {
+    pub white_kingside: bool,
+    pub white_queenside: bool,
+    pub black_kingside: bool,
+    pub black_queenside: bool,
+}
+
+impl CastlingRights {
+    pub fn from_fen(field: &str) -> Result<Self, String> {
+        if field == "-" {
+            return Ok(Self::default());
+        }
+        let mut rights = Self::default();
+        for symbol in field.chars() {
+            match symbol {
+                'K' => rights.white_kingside = true,
+                'Q' => rights.white_queenside = true,
+                'k' => rights.black_kingside = true,
+                'q' => rights.black_queenside = true,
+                _ => return Err("invalid castling rights in FEN".to_string()),
+            }
+        }
+        Ok(rights)
+    }
+
+    pub fn to_fen(self) -> String {
+        let mut field = String::new();
+        if self.white_kingside {
+            field.push('K');
+        }
+        if self.white_queenside {
+            field.push('Q');
+        }
+        if self.black_kingside {
+            field.push('k');
+        }
+        if self.black_queenside {
+            field.push('q');
+        }
+        if field.is_empty() {
+            field.push('-');
+        }
+        field
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Position {
     board: [Option<Piece>; BOARD_SQUARES],
     side_to_move: Color,
+    castling_rights: CastlingRights,
+    en_passant_target: Option<Square>,
     halfmove_clock: u16,
     fullmove_number: u16,
 }
@@ -221,12 +270,14 @@ impl Default for Position {
 
 impl Position {
     pub const STARTPOS_FEN: &'static str =
-        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
     pub fn empty(side_to_move: Color) -> Self {
         Self {
             board: [None; BOARD_SQUARES],
             side_to_move,
+            castling_rights: CastlingRights::default(),
+            en_passant_target: None,
             halfmove_clock: 0,
             fullmove_number: 1,
         }
@@ -234,6 +285,12 @@ impl Position {
 
     pub fn starting_position() -> Self {
         let mut position = Self::empty(Color::White);
+        position.castling_rights = CastlingRights {
+            white_kingside: true,
+            white_queenside: true,
+            black_kingside: true,
+            black_queenside: true,
+        };
         let back_rank = [
             PieceKind::Rook,
             PieceKind::Knight,
@@ -285,8 +342,8 @@ impl Position {
         let side_field = fields
             .next()
             .ok_or_else(|| "missing side-to-move field in FEN".to_string())?;
-        let _castling_field = fields.next().unwrap_or("-");
-        let _en_passant_field = fields.next().unwrap_or("-");
+        let castling_field = fields.next().unwrap_or("-");
+        let en_passant_field = fields.next().unwrap_or("-");
         let halfmove_clock = fields
             .next()
             .unwrap_or("0")
@@ -306,9 +363,21 @@ impl Position {
         )
         .ok_or_else(|| "invalid side-to-move field in FEN".to_string())?;
 
+        let castling_rights = CastlingRights::from_fen(castling_field)?;
+        let en_passant_target = if en_passant_field == "-" {
+            None
+        } else {
+            Some(
+                Square::from_algebraic(en_passant_field)
+                    .ok_or_else(|| "invalid en-passant square in FEN".to_string())?,
+            )
+        };
+
         let mut position = Self {
             board: [None; BOARD_SQUARES],
             side_to_move,
+            castling_rights,
+            en_passant_target,
             halfmove_clock,
             fullmove_number,
         };
@@ -371,9 +440,13 @@ impl Position {
             ranks.push(rank_text);
         }
         format!(
-            "{} {} - - {} {}",
+            "{} {} {} {} {} {}",
             ranks.join("/"),
             self.side_to_move.fen_symbol(),
+            self.castling_rights.to_fen(),
+            self.en_passant_target
+                .map(|square| square.to_string())
+                .unwrap_or_else(|| "-".to_string()),
             self.halfmove_clock,
             self.fullmove_number
         )
@@ -385,6 +458,14 @@ impl Position {
 
     pub fn piece_at(&self, square: Square) -> Option<Piece> {
         self.board[square.0 as usize]
+    }
+
+    pub fn castling_rights(&self) -> CastlingRights {
+        self.castling_rights
+    }
+
+    pub fn en_passant_target(&self) -> Option<Square> {
+        self.en_passant_target
     }
 
     pub fn set_piece(&mut self, square: Square, piece: Option<Piece>) {
@@ -401,15 +482,62 @@ impl Position {
     pub fn apply_move(&self, chess_move: &ChessMove) -> Self {
         let mut next = self.clone();
         let moving_piece = next.piece_at(chess_move.from);
+        let captured_piece = next.piece_at(chess_move.to);
         next.set_piece(chess_move.from, None);
         if let Some(mut piece) = moving_piece {
             if let Some(promotion) = chess_move.promotion {
                 piece.kind = promotion;
             }
+            if matches!(piece.kind, PieceKind::King) {
+                match piece.color {
+                    Color::White => {
+                        next.castling_rights.white_kingside = false;
+                        next.castling_rights.white_queenside = false;
+                    }
+                    Color::Black => {
+                        next.castling_rights.black_kingside = false;
+                        next.castling_rights.black_queenside = false;
+                    }
+                }
+            }
+            if matches!(piece.kind, PieceKind::Rook) {
+                match (piece.color, chess_move.from.file(), chess_move.from.rank()) {
+                    (Color::White, 0, 0) => next.castling_rights.white_queenside = false,
+                    (Color::White, 7, 0) => next.castling_rights.white_kingside = false,
+                    (Color::Black, 0, 7) => next.castling_rights.black_queenside = false,
+                    (Color::Black, 7, 7) => next.castling_rights.black_kingside = false,
+                    _ => {}
+                }
+            }
             next.set_piece(chess_move.to, Some(piece));
+            next.en_passant_target = if matches!(piece.kind, PieceKind::Pawn)
+                && (chess_move.from.rank() as i8 - chess_move.to.rank() as i8).abs() == 2
+            {
+                Square::from_file_rank(
+                    chess_move.from.file(),
+                    ((chess_move.from.rank() as u16 + chess_move.to.rank() as u16) / 2) as u8,
+                )
+            } else {
+                None
+            };
+            next.halfmove_clock = if matches!(piece.kind, PieceKind::Pawn) || captured_piece.is_some() {
+                0
+            } else {
+                next.halfmove_clock.saturating_add(1)
+            };
+        }
+        if let Some(captured_piece) = captured_piece {
+            if matches!(captured_piece.kind, PieceKind::Rook) {
+                match (captured_piece.color, chess_move.to.file(), chess_move.to.rank()) {
+                    (Color::White, 0, 0) => next.castling_rights.white_queenside = false,
+                    (Color::White, 7, 0) => next.castling_rights.white_kingside = false,
+                    (Color::Black, 0, 7) => next.castling_rights.black_queenside = false,
+                    (Color::Black, 7, 7) => next.castling_rights.black_kingside = false,
+                    _ => {}
+                }
+            }
         }
         next.side_to_move = self.side_to_move.opposite();
-        next.halfmove_clock = next.halfmove_clock.saturating_add(1);
         if matches!(next.side_to_move, Color::White) {
             next.fullmove_number = next.fullmove_number.saturating_add(1);
         }
@@ -505,6 +633,10 @@ impl Position {
             Color::White => 1,
             Color::Black => -1,
         };
+        let start_rank = match color {
+            Color::White => 1,
+            Color::Black => 6,
+        };
         let next_rank = from.rank() as i8 + direction;
         if (0..8).contains(&next_rank) {
             let to = Square::from_file_rank(from.file(), next_rank as u8).unwrap();
@@ -515,6 +647,16 @@ impl Position {
                     moves.push(ChessMove::new(from, to).with_promotion(PieceKind::Queen));
                 } else {
                     moves.push(ChessMove::new(from, to));
+                    if from.rank() == start_rank {
+                        let skip_rank = next_rank + direction;
+                        if (0..8).contains(&skip_rank) {
+                            let skip_square =
+                                Square::from_file_rank(from.file(), skip_rank as u8).unwrap();
+                            if self.piece_at(skip_square).is_none() {
+                                moves.push(ChessMove::new(from, skip_square));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -759,6 +901,7 @@ mod tests {
         let moves = position.pseudo_legal_moves();
         assert!(!moves.is_empty());
         assert!(moves.iter().any(|chess_move| chess_move.uci() == "b1c3"));
+        assert!(moves.iter().any(|chess_move| chess_move.uci() == "e2e4"));
     }
 
     #[test]
@@ -815,6 +958,26 @@ mod tests {
             })
         );
         assert_eq!(position.to_fen(), "8/8/3k4/8/8/4K3/8/8 b - - 4 18");
+    }
+
+    #[test]
+    fn preserves_castling_and_en_passant_in_fen() {
+        let position =
+            Position::from_fen("rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1").unwrap();
+        assert_eq!(
+            position.castling_rights(),
+            CastlingRights {
+                white_kingside: true,
+                white_queenside: true,
+                black_kingside: true,
+                black_queenside: true,
+            }
+        );
+        assert_eq!(position.en_passant_target(), Square::from_algebraic("d3"));
+        assert_eq!(
+            position.to_fen(),
+            "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1"
+        );
     }
 
     #[test]
