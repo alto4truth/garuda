@@ -88,6 +88,25 @@ fn write_nes_train_run_config(
     .map_err(|error| format!("failed to write progress header {progress_path}: {error}"))
 }
 
+fn write_uci_game_records(path: &str, records: &[UciFitnessGameRecord]) -> Result<(), String> {
+    let mut contents =
+        "game_index\tgaruda_color\tresult\tstatus\tstart_fen\tfinal_fen\tplies\n".to_string();
+    for record in records {
+        contents.push_str(&format!(
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+            record.game_index,
+            record.garuda_color,
+            record.result,
+            record.status,
+            record.start_fen,
+            record.final_fen,
+            record.plies
+        ));
+    }
+    fs::write(path, contents)
+        .map_err(|error| format!("failed to write uci game records {path}: {error}"))
+}
+
 struct UciEngine {
     child: Child,
     stdin: ChildStdin,
@@ -483,6 +502,18 @@ struct UciFitnessResult {
     garuda_wins: usize,
     uci_wins: usize,
     draws: usize,
+    games: Vec<UciFitnessGameRecord>,
+}
+
+#[derive(Debug, Clone)]
+struct UciFitnessGameRecord {
+    game_index: usize,
+    garuda_color: char,
+    result: String,
+    status: String,
+    start_fen: String,
+    final_fen: String,
+    plies: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -528,6 +559,7 @@ fn evaluate_mcts_model_against_uci(
     let mut garuda_wins = 0usize;
     let mut uci_wins = 0usize;
     let mut draws = 0usize;
+    let mut games = Vec::new();
 
     for game_index in 0..config.games {
         let garuda_color = if game_index % 2 == 0 {
@@ -536,7 +568,7 @@ fn evaluate_mcts_model_against_uci(
             garuda::chess::Color::Black
         };
         let start_position = &config.openings[game_index % config.openings.len()];
-        let (_position, status, _san_moves) = play_match_game(
+        let (position, status, san_moves) = play_match_game(
             |position, repetition_history| {
                 engine.best_move_with_history(position, repetition_history)
             },
@@ -547,13 +579,22 @@ fn evaluate_mcts_model_against_uci(
             false,
             start_position,
         )?;
-        let _ = summarize_bo_result(
+        let result = summarize_bo_result(
             status,
             garuda_color,
             &mut garuda_wins,
             &mut uci_wins,
             &mut draws,
         );
+        games.push(UciFitnessGameRecord {
+            game_index: game_index + 1,
+            garuda_color: garuda_color.fen_symbol(),
+            result: result.to_string(),
+            status: format_status(status).to_string(),
+            start_fen: start_position.to_fen(),
+            final_fen: position.to_fen(),
+            plies: san_moves.len(),
+        });
     }
 
     Ok(UciFitnessResult {
@@ -561,6 +602,7 @@ fn evaluate_mcts_model_against_uci(
         garuda_wins,
         uci_wins,
         draws,
+        games,
     })
 }
 
@@ -1450,6 +1492,16 @@ fn main() {
             println!("garuda_wins {}", result.garuda_wins);
             println!("uci_wins {}", result.uci_wins);
             println!("draws {}", result.draws);
+            for game in result.games {
+                println!(
+                    "game {} color {} result {} status {} plies {}",
+                    game.game_index,
+                    game.garuda_color,
+                    game.result,
+                    game.status,
+                    game.plies
+                );
+            }
         }
         "nes-train-uci" => {
             let Some(engine_command) = args.next() else {
@@ -1620,8 +1672,13 @@ fn main() {
             };
             if let Some(run_dir) = run_dir.as_deref() {
                 let summary_path = format!("{run_dir}/summary.txt");
+                let final_games_path = format!("{run_dir}/final-games.tsv");
+                if let Err(error) = write_uci_game_records(&final_games_path, &final_result.games) {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
                 let summary = format!(
-                    "best_generation={}\nbest_updated_fitness={}\nfinal_fitness={}\ntotal_evaluations={}\ngaruda_wins={}\nuci_wins={}\ndraws={}\noutput_vector={}\nlatest_vector={run_dir}/latest.vec\nbest_vector={run_dir}/best.vec\n",
+                    "best_generation={}\nbest_updated_fitness={}\nfinal_fitness={}\ntotal_evaluations={}\ngaruda_wins={}\nuci_wins={}\ndraws={}\noutput_vector={}\nlatest_vector={run_dir}/latest.vec\nbest_vector={run_dir}/best.vec\nfinal_games={run_dir}/final-games.tsv\n",
                     best_generation,
                     best_updated_fitness,
                     final_result.fitness,
@@ -1648,6 +1705,7 @@ fn main() {
                 println!("run_dir {}", run_dir);
                 println!("progress_file {run_dir}/progress.tsv");
                 println!("summary_file {run_dir}/summary.txt");
+                println!("final_games_file {run_dir}/final-games.tsv");
             }
         }
         _ => {
