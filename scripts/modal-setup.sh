@@ -7,5 +7,6 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 uv tool install --upgrade modal
-modal token new
-modal profile current
+uv tool run modal token new
+uv tool run modal app list >/dev/null
+uv tool run modal profile current

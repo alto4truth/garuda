@@ -7,6 +7,7 @@ Use `uv`, not `pip`, for the fastest path on a clean machine:
 ```
 
 If `modal profile current` prints your active profile, this repo is ready for the next step.
+The important real check is that `uv tool run modal app list` does not return a token error.
 
 **Run**
 
@@ -41,4 +42,6 @@ ARTIFACT_PREFIX=large-run POPULATION_SIZE=32 GENERATIONS=8 ITERATIONS=10 MAX_PLI
 
 **Current Limitation**
 
-This environment does not have Python or `modal` installed, so I could not execute the Modal program here. The JS side it wraps is already verified locally.
+This repo is now past the install blocker.
+In this environment, `uv` and the Modal CLI are installed, and `modal_app.py::distributed_tune --help` parses correctly.
+The remaining blocker for an actual remote run is Modal authentication: `uv tool run modal app list` still returns `Token missing`.

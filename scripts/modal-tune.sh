@@ -12,7 +12,7 @@ LEARNING_RATE="${LEARNING_RATE:-0.18}"
 SEED="${SEED:-1337}"
 FITNESS="${FITNESS:-mixed}"
 
-modal run modal_app.py::distributed_tune \
+uv tool run modal run modal_app.py::distributed_tune \
   --population-size "${POPULATION_SIZE}" \
   --generations "${GENERATIONS}" \
   --iterations "${ITERATIONS}" \
