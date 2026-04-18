@@ -479,6 +479,125 @@ impl Position {
             .filter_map(|(index, piece)| piece.map(|piece| (Square(index as u8), piece)))
     }
 
+    pub fn king_square(&self, color: Color) -> Option<Square> {
+        self.iter_pieces().find_map(|(square, piece)| {
+            if piece.color == color && piece.kind == PieceKind::King {
+                Some(square)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn is_square_attacked(&self, target: Square, by_color: Color) -> bool {
+        let pawn_rank_offset = match by_color {
+            Color::White => -1,
+            Color::Black => 1,
+        };
+        for pawn_file_offset in [-1, 1] {
+            let file = target.file() as i8 + pawn_file_offset;
+            let rank = target.rank() as i8 + pawn_rank_offset;
+            if !(0..8).contains(&file) || !(0..8).contains(&rank) {
+                continue;
+            }
+            let square = Square::from_file_rank(file as u8, rank as u8).unwrap();
+            if self.piece_at(square)
+                == Some(Piece {
+                    color: by_color,
+                    kind: PieceKind::Pawn,
+                })
+            {
+                return true;
+            }
+        }
+
+        const KNIGHT_OFFSETS: [(i8, i8); 8] = [
+            (1, 2),
+            (2, 1),
+            (2, -1),
+            (1, -2),
+            (-1, -2),
+            (-2, -1),
+            (-2, 1),
+            (-1, 2),
+        ];
+        for (df, dr) in KNIGHT_OFFSETS {
+            let file = target.file() as i8 + df;
+            let rank = target.rank() as i8 + dr;
+            if !(0..8).contains(&file) || !(0..8).contains(&rank) {
+                continue;
+            }
+            let square = Square::from_file_rank(file as u8, rank as u8).unwrap();
+            if self.piece_at(square)
+                == Some(Piece {
+                    color: by_color,
+                    kind: PieceKind::Knight,
+                })
+            {
+                return true;
+            }
+        }
+
+        for df in -1..=1 {
+            for dr in -1..=1 {
+                if df == 0 && dr == 0 {
+                    continue;
+                }
+                let file = target.file() as i8 + df;
+                let rank = target.rank() as i8 + dr;
+                if !(0..8).contains(&file) || !(0..8).contains(&rank) {
+                    continue;
+                }
+                let square = Square::from_file_rank(file as u8, rank as u8).unwrap();
+                if self.piece_at(square)
+                    == Some(Piece {
+                        color: by_color,
+                        kind: PieceKind::King,
+                    })
+                {
+                    return true;
+                }
+            }
+        }
+
+        let sliding_rays = [
+            ((1, 0), PieceKind::Rook, PieceKind::Queen),
+            ((-1, 0), PieceKind::Rook, PieceKind::Queen),
+            ((0, 1), PieceKind::Rook, PieceKind::Queen),
+            ((0, -1), PieceKind::Rook, PieceKind::Queen),
+            ((1, 1), PieceKind::Bishop, PieceKind::Queen),
+            ((1, -1), PieceKind::Bishop, PieceKind::Queen),
+            ((-1, 1), PieceKind::Bishop, PieceKind::Queen),
+            ((-1, -1), PieceKind::Bishop, PieceKind::Queen),
+        ];
+        for ((df, dr), primary, secondary) in sliding_rays {
+            let mut file = target.file() as i8 + df;
+            let mut rank = target.rank() as i8 + dr;
+            while (0..8).contains(&file) && (0..8).contains(&rank) {
+                let square = Square::from_file_rank(file as u8, rank as u8).unwrap();
+                if let Some(piece) = self.piece_at(square) {
+                    if piece.color == by_color
+                        && (piece.kind == primary || piece.kind == secondary)
+                    {
+                        return true;
+                    }
+                    break;
+                }
+                file += df;
+                rank += dr;
+            }
+        }
+
+        false
+    }
+
+    pub fn is_in_check(&self, color: Color) -> bool {
+        let Some(king_square) = self.king_square(color) else {
+            return false;
+        };
+        self.is_square_attacked(king_square, color.opposite())
+    }
+
     pub fn apply_move(&self, chess_move: &ChessMove) -> Self {
         let mut next = self.clone();
         let moving_piece = next.piece_at(chess_move.from);
@@ -546,7 +665,7 @@ impl Position {
 
     pub fn apply_uci_move(&self, uci: &str) -> Option<Self> {
         let chess_move = ChessMove::from_uci(uci)?;
-        self.pseudo_legal_moves()
+        self.legal_moves()
             .into_iter()
             .find(|candidate| candidate == &chess_move)
             .map(|candidate| self.apply_move(&candidate))
@@ -572,6 +691,14 @@ impl Position {
             }
         }
         moves
+    }
+
+    pub fn legal_moves(&self) -> Vec<ChessMove> {
+        let side = self.side_to_move;
+        self.pseudo_legal_moves()
+            .into_iter()
+            .filter(|chess_move| !self.apply_move(chess_move).is_in_check(side))
+            .collect()
     }
 
     fn push_move_if_valid(&self, from: Square, file: i8, rank: i8, moves: &mut Vec<ChessMove>) -> bool {
@@ -795,10 +922,14 @@ impl PolicyValueModel for TinyNeuralModel {
             .fold(self.value_bias, |acc, (node, weight)| acc + (node * weight));
         let value = raw_value.tanh();
 
-        let moves = position.pseudo_legal_moves();
+        let moves = position.legal_moves();
         if moves.is_empty() {
             return PolicyValue {
-                value,
+                value: if position.is_in_check(position.side_to_move()) {
+                    -1.0
+                } else {
+                    value
+                },
                 policy: Vec::new(),
             };
         }
@@ -905,6 +1036,14 @@ mod tests {
     }
 
     #[test]
+    fn legal_moves_exist_from_start() {
+        let position = Position::starting_position();
+        let moves = position.legal_moves();
+        assert!(!moves.is_empty());
+        assert!(moves.iter().any(|chess_move| chess_move.uci() == "e2e4"));
+    }
+
+    #[test]
     fn neural_model_produces_policy_and_value() {
         let model = TinyNeuralModel::default();
         let evaluation = model.evaluate(&Position::starting_position());
@@ -978,6 +1117,16 @@ mod tests {
             position.to_fen(),
             "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1"
         );
+    }
+
+    #[test]
+    fn detects_check_and_filters_illegal_moves() {
+        let position = Position::from_fen("4k3/8/8/8/8/8/4r3/4K3 w - - 0 1").unwrap();
+        assert!(position.is_in_check(Color::White));
+        let moves = position.legal_moves();
+        assert!(moves.iter().all(|chess_move| chess_move.from == Square::from_algebraic("e1").unwrap()));
+        assert!(moves.iter().any(|chess_move| chess_move.uci() == "e1e2"));
+        assert!(!moves.iter().any(|chess_move| chess_move.uci() == "e1d2"));
     }
 
     #[test]
