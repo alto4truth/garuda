@@ -2,6 +2,7 @@ use std::fs;
 use garuda::chess::{Engine, GameStatus, Position, SearchConfig, TinyNeuralModel};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn print_usage() {
     eprintln!("usage:");
@@ -165,6 +166,57 @@ fn load_openings(path: &str) -> Result<Vec<Position>, String> {
     Ok(openings)
 }
 
+fn chrono_like_utc_date() -> String {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let days = seconds / 86_400;
+    civil_from_days(days as i64)
+}
+
+fn civil_from_days(days_since_epoch: i64) -> String {
+    let z = days_since_epoch + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    let year = year + if month <= 2 { 1 } else { 0 };
+    format!("{year:04}.{month:02}.{day:02}")
+}
+
+fn format_pgn_result(status: GameStatus) -> &'static str {
+    match status {
+        GameStatus::Checkmate {
+            loser: garuda::chess::Color::White,
+        } => "0-1",
+        GameStatus::Checkmate {
+            loser: garuda::chess::Color::Black,
+        } => "1-0",
+        GameStatus::Stalemate { .. }
+        | GameStatus::DrawByFiftyMoveRule
+        | GameStatus::DrawByRepetition
+        | GameStatus::Ongoing => "1/2-1/2",
+    }
+}
+
+fn format_pgn_moves(san_moves: &[String], result: &str) -> String {
+    let mut tokens = Vec::new();
+    for (index, san) in san_moves.iter().enumerate() {
+        if index % 2 == 0 {
+            tokens.push(format!("{}. {}", (index / 2) + 1, san));
+        } else {
+            tokens.push(san.clone());
+        }
+    }
+    tokens.push(result.to_string());
+    tokens.join(" ")
+}
+
 fn play_match_game(
     engine: &Engine<TinyNeuralModel>,
     uci: &mut UciEngine,
@@ -173,9 +225,10 @@ fn play_match_game(
     garuda_color: garuda::chess::Color,
     emit_moves: bool,
     start_position: &Position,
-) -> Result<(Position, GameStatus), String> {
+) -> Result<(Position, GameStatus, Vec<String>), String> {
     let mut position = start_position.clone();
     let mut repetition_history = vec![position.repetition_key()];
+    let mut san_moves = Vec::new();
     for ply in 0..plies {
         let status = position.game_status_with_history(&repetition_history);
         if status != GameStatus::Ongoing {
@@ -195,14 +248,23 @@ fn play_match_game(
         if emit_moves {
             println!("ply {} {} {}", ply + 1, side.fen_symbol(), uci_move);
         }
+        let chess_move = position
+            .legal_moves()
+            .into_iter()
+            .find(|candidate| candidate.uci() == uci_move)
+            .ok_or_else(|| format!("illegal move from engine: {uci_move}"))?;
+        let san = position
+            .san_for_move(&chess_move)
+            .ok_or_else(|| format!("failed to convert move to SAN: {uci_move}"))?;
         let Some(next) = position.apply_uci_move(&uci_move) else {
             return Err(format!("illegal move from engine: {uci_move}"));
         };
+        san_moves.push(san);
         position = next;
         repetition_history.push(position.repetition_key());
     }
     let final_status = position.game_status_with_history(&repetition_history);
-    Ok((position, final_status))
+    Ok((position, final_status, san_moves))
 }
 
 fn main() {
@@ -309,7 +371,7 @@ fn main() {
                 }
             };
             let start_position = Position::starting_position();
-            let (position, status) = match play_match_game(
+            let (position, status, san_moves) = match play_match_game(
                 &engine,
                 &mut uci,
                 plies,
@@ -326,6 +388,30 @@ fn main() {
             };
             println!("result {}", format_status(status));
             println!("final_fen {}", position.to_fen());
+            let pgn_result = format_pgn_result(status);
+            println!("[Event \"Garuda vs UCI\"]");
+            println!("[Site \"?\"]");
+            println!("[Date \"{}\"]", chrono_like_utc_date());
+            println!("[Round \"?\"]");
+            println!(
+                "[White \"{}\"]",
+                if garuda_color == garuda::chess::Color::White {
+                    "Garuda"
+                } else {
+                    "Stockfish"
+                }
+            );
+            println!(
+                "[Black \"{}\"]",
+                if garuda_color == garuda::chess::Color::Black {
+                    "Garuda"
+                } else {
+                    "Stockfish"
+                }
+            );
+            println!("[Result \"{}\"]", pgn_result);
+            println!();
+            println!("{}", format_pgn_moves(&san_moves, pgn_result));
         }
         "bo-uci" => {
             let Some(engine_command) = args.next() else {
@@ -371,7 +457,7 @@ fn main() {
                     garuda::chess::Color::Black
                 };
                 let start_position = &openings[game_index % openings.len()];
-                let (_position, status) = match play_match_game(
+                let (_position, status, _san_moves) = match play_match_game(
                     &engine,
                     &mut uci,
                     plies,

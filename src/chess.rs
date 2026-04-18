@@ -80,6 +80,17 @@ impl PieceKind {
             }
         }
     }
+
+    pub fn san_symbol(self) -> Option<char> {
+        match self {
+            PieceKind::Pawn => None,
+            PieceKind::Knight => Some('N'),
+            PieceKind::Bishop => Some('B'),
+            PieceKind::Rook => Some('R'),
+            PieceKind::Queen => Some('Q'),
+            PieceKind::King => Some('K'),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -739,6 +750,89 @@ impl Position {
             .into_iter()
             .find(|candidate| candidate == &chess_move)
             .map(|candidate| self.apply_move(&candidate))
+    }
+
+    pub fn san_for_move(&self, chess_move: &ChessMove) -> Option<String> {
+        let piece = self.piece_at(chess_move.from)?;
+        let is_castling = piece.kind == PieceKind::King
+            && chess_move.from.rank() == chess_move.to.rank()
+            && (chess_move.from.file() as i8 - chess_move.to.file() as i8).abs() == 2;
+        if is_castling {
+            let mut san = if chess_move.to.file() > chess_move.from.file() {
+                "O-O".to_string()
+            } else {
+                "O-O-O".to_string()
+            };
+            let next = self.apply_move(chess_move);
+            match next.game_status() {
+                GameStatus::Checkmate { .. } => san.push('#'),
+                _ if next.is_in_check(next.side_to_move()) => san.push('+'),
+                _ => {}
+            }
+            return Some(san);
+        }
+
+        let is_en_passant = self.en_passant_target == Some(chess_move.to)
+            && self.piece_at(chess_move.to).is_none()
+            && piece.kind == PieceKind::Pawn
+            && chess_move.from.file() != chess_move.to.file();
+        let is_capture = self.piece_at(chess_move.to).is_some() || is_en_passant;
+
+        let mut san = String::new();
+        if let Some(symbol) = piece.kind.san_symbol() {
+            san.push(symbol);
+            let ambiguity = self
+                .legal_moves()
+                .into_iter()
+                .filter(|candidate| {
+                    if candidate == chess_move {
+                        return false;
+                    }
+                    let Some(candidate_piece) = self.piece_at(candidate.from) else {
+                        return false;
+                    };
+                    candidate_piece.kind == piece.kind
+                        && candidate_piece.color == piece.color
+                        && candidate.to == chess_move.to
+                        && candidate.promotion == chess_move.promotion
+                })
+                .collect::<Vec<_>>();
+            if !ambiguity.is_empty() {
+                let same_file = ambiguity
+                    .iter()
+                    .any(|candidate| candidate.from.file() == chess_move.from.file());
+                let same_rank = ambiguity
+                    .iter()
+                    .any(|candidate| candidate.from.rank() == chess_move.from.rank());
+                if !same_file {
+                    san.push((b'a' + chess_move.from.file()) as char);
+                } else if !same_rank {
+                    san.push((b'1' + chess_move.from.rank()) as char);
+                } else {
+                    san.push((b'a' + chess_move.from.file()) as char);
+                    san.push((b'1' + chess_move.from.rank()) as char);
+                }
+            }
+        } else if is_capture {
+            san.push((b'a' + chess_move.from.file()) as char);
+        }
+
+        if is_capture {
+            san.push('x');
+        }
+        san.push_str(&chess_move.to.to_string());
+        if let Some(promotion) = chess_move.promotion.and_then(|kind| kind.san_symbol()) {
+            san.push('=');
+            san.push(promotion);
+        }
+
+        let next = self.apply_move(chess_move);
+        match next.game_status() {
+            GameStatus::Checkmate { .. } => san.push('#'),
+            _ if next.is_in_check(next.side_to_move()) => san.push('+'),
+            _ => {}
+        }
+        Some(san)
     }
 
     pub fn pseudo_legal_moves(&self) -> Vec<ChessMove> {
@@ -1779,6 +1873,36 @@ mod tests {
         assert!(
             engine.move_ordering_bonus(&position, &safe_move)
                 > engine.move_ordering_bonus(&position, &blunder_move)
+        );
+    }
+
+    #[test]
+    fn san_formats_basic_pawn_and_piece_moves() {
+        let position = Position::starting_position();
+        assert_eq!(
+            position.san_for_move(&ChessMove::from_uci("e2e4").unwrap()).as_deref(),
+            Some("e4")
+        );
+        assert_eq!(
+            position.san_for_move(&ChessMove::from_uci("g1f3").unwrap()).as_deref(),
+            Some("Nf3")
+        );
+    }
+
+    #[test]
+    fn san_formats_castling_and_promotion() {
+        let castling = Position::from_fen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1").unwrap();
+        assert_eq!(
+            castling.san_for_move(&ChessMove::from_uci("e1g1").unwrap()).as_deref(),
+            Some("O-O")
+        );
+
+        let promotion = Position::from_fen("4k3/6P1/8/8/8/8/8/4K3 w - - 0 1").unwrap();
+        assert_eq!(
+            promotion
+                .san_for_move(&ChessMove::from_uci("g7g8q").unwrap())
+                .as_deref(),
+            Some("g8=Q+")
         );
     }
 
