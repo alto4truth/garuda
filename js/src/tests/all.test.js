@@ -21,6 +21,7 @@ const {
   evaluateDistributedTask,
   runDistributedTune,
 } = require('../chess/distributed');
+const { parseStockfishScoreLine } = require('../chess/distill');
 const { P2PNetwork, ZKP2PNetwork, DHT } = require('../p2p/network');
 const { LLVMDataLayer, LLVMTestingHarness } = require('../llvm/datalayer');
 const { LRU, BloomFilter, Graph, Queue, RateLimiter, CircuitBreaker, PubSub, Cache } = require('../utils/structures');
@@ -306,6 +307,25 @@ test('TinyNeuralPolicyValueModel round-trips parameter vector', () => {
   if (!after.every((value, index) => value === nudged[index])) throw new Error('Neural parameter round-trip failed');
 });
 
+test('TinyNeuralPolicyValueModel can train on examples', () => {
+  const model = new TinyNeuralPolicyValueModel();
+  const example = {
+    fen: new Chess().fen(),
+    bestMove: 'e4',
+    targetValue: 0.2,
+  };
+  const before = model.evaluatePosition(new Chess());
+  const beforeProb = before.policy.find((entry) => entry.move === 'e4')?.prior || 0;
+  const result = model.trainOnExamples([example], {
+    learningRate: 0.05,
+    epochs: 6,
+  });
+  const after = model.evaluatePosition(new Chess());
+  const afterProb = after.policy.find((entry) => entry.move === 'e4')?.prior || 0;
+  if (!Array.isArray(result.losses) || result.losses.length !== 6) throw new Error('Missing neural training losses');
+  if (!(afterProb > beforeProb)) throw new Error('Neural training did not improve teacher move probability');
+});
+
 test('evaluatePolicyVector returns numeric fitness', () => {
   const model = new TinyFeaturePolicyValueModel();
   const score = evaluatePolicyVector(model.getParameterVector(), { iterations: 8 });
@@ -316,6 +336,13 @@ test('evaluatePolicyVector supports neural model', () => {
   const model = new TinyNeuralPolicyValueModel();
   const score = evaluatePolicyVector(model.getParameterVector(), { iterations: 4, modelType: 'neural' });
   if (typeof score !== 'number' || Number.isNaN(score)) throw new Error('Neural fitness score invalid');
+});
+
+test('parseStockfishScoreLine handles cp and mate', () => {
+  const cp = parseStockfishScoreLine('info depth 6 score cp 32 nodes 1000');
+  const mate = parseStockfishScoreLine('info depth 10 score mate -3 nodes 1000');
+  if (typeof cp !== 'number' || Number.isNaN(cp)) throw new Error('CP score parse failed');
+  if (mate !== -1) throw new Error('Mate score parse failed');
 });
 
 test('NES smoke tune runs end-to-end', () => {

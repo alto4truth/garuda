@@ -17,6 +17,10 @@ const {
   runDistributedTune,
   writeJsonFile,
 } = require('./distributed');
+const {
+  buildStockfishDataset,
+  distillAgainstStockfish,
+} = require('./distill');
 
 function parseArgs(argv) {
   const args = { _: [] };
@@ -109,7 +113,7 @@ function buildOptions(args) {
   };
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   const command = args._[0] || 'help';
   const options = buildOptions(args);
@@ -193,6 +197,29 @@ function main() {
       emitJson(result, args.out);
       break;
     }
+    case 'distill:data': {
+      const result = await buildStockfishDataset({
+        maxPlies: parseNumber(args.teacherPlies, 8),
+        stockfishDepth: parseNumber(args.stockfishDepth, 6),
+        stockfishFlavor: args.stockfishFlavor || 'lite-single',
+      });
+      emitJson({
+        exampleCount: result.length,
+        examples: result,
+      }, args.out);
+      break;
+    }
+    case 'distill:train': {
+      const result = await distillAgainstStockfish({
+        epochs: parseNumber(args.epochs, 4),
+        learningRate: parseNumber(args.learningRate, 0.01),
+        maxPlies: parseNumber(args.teacherPlies, 8),
+        stockfishDepth: parseNumber(args.stockfishDepth, 6),
+        stockfishFlavor: args.stockfishFlavor || 'lite-single',
+      });
+      emitJson(result, args.out);
+      break;
+    }
     default:
       console.log(`Usage:
   node js/src/chess/cli.js vector
@@ -203,8 +230,13 @@ function main() {
   node js/src/chess/cli.js dist:worker [--task '{...}' | --taskFile task.json] [--taskIndex N] [--out file.json]
   node js/src/chess/cli.js dist:aggregate [--manifest '{...}' | --manifestFile manifest.json] [--results '[...]' | --resultsFile results.json] [--out file.json]
   node js/src/chess/cli.js dist:tune [--fitness mixed|selfplay|tactical] [--populationSize N] [--generations N]
+  node js/src/chess/cli.js distill:data [--stockfishDepth N] [--teacherPlies N]
+  node js/src/chess/cli.js distill:train [--stockfishDepth N] [--teacherPlies N] [--epochs N] [--learningRate X]
 `);
   }
 }
 
-main();
+main().catch((error) => {
+  console.error(error.message);
+  process.exit(1);
+});

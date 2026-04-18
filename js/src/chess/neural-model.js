@@ -2,6 +2,7 @@ const { Chess } = require('chess.js');
 
 const INPUT_SIZE = 96;
 const HIDDEN_SIZE = 32;
+const MOVE_FEATURE_SIZE = 12;
 
 function tanh(value) {
   return Math.tanh(value);
@@ -75,7 +76,7 @@ class TinyNeuralPolicyValueModel {
     this.expansionWidth = options.expansionWidth || 8;
     this.inputSize = INPUT_SIZE;
     this.hiddenSize = HIDDEN_SIZE;
-    this.moveFeatureSize = 12;
+    this.moveFeatureSize = MOVE_FEATURE_SIZE;
     this.parameters = this.createDefaultParameters();
     if (Array.isArray(options.parameterVector)) {
       this.setParameterVector(options.parameterVector);
@@ -92,15 +93,19 @@ class TinyNeuralPolicyValueModel {
     const valueWeights = new Array(this.hiddenSize).fill(0).map((_, index) => (
       Math.sin((index + 1) * 0.41) * 0.18
     ));
-    const moveWeights = new Array(this.hiddenSize + this.moveFeatureSize).fill(0).map((_, index) => (
-      Math.cos((index + 1) * 0.19) * 0.12
+    const policyInteraction = new Array(this.hiddenSize * this.moveFeatureSize).fill(0).map((_, index) => (
+      Math.cos((index + 1) * 0.19) * 0.08
+    ));
+    const policyMoveBias = new Array(this.moveFeatureSize).fill(0).map((_, index) => (
+      Math.sin((index + 1) * 0.23) * 0.06
     ));
     return {
       inputWeights,
       hiddenBias,
       valueWeights,
       valueBias: 0,
-      moveWeights,
+      policyInteraction,
+      policyMoveBias,
       moveBias: 0,
     };
   }
@@ -111,7 +116,8 @@ class TinyNeuralPolicyValueModel {
       'hiddenBias',
       'valueWeights',
       'valueBias',
-      'moveWeights',
+      'policyInteraction',
+      'policyMoveBias',
       'moveBias',
     ];
   }
@@ -122,7 +128,8 @@ class TinyNeuralPolicyValueModel {
       ...this.parameters.hiddenBias,
       ...this.parameters.valueWeights,
       this.parameters.valueBias,
-      ...this.parameters.moveWeights,
+      ...this.parameters.policyInteraction,
+      ...this.parameters.policyMoveBias,
       this.parameters.moveBias,
     ];
   }
@@ -146,7 +153,8 @@ class TinyNeuralPolicyValueModel {
       this.parameters.valueBias = vector[offset];
     }
     offset += 1;
-    assignSlice(this.parameters.moveWeights, this.hiddenSize + this.moveFeatureSize);
+    assignSlice(this.parameters.policyInteraction, this.hiddenSize * this.moveFeatureSize);
+    assignSlice(this.parameters.policyMoveBias, this.moveFeatureSize);
     if (typeof vector[offset] === 'number' && Number.isFinite(vector[offset])) {
       this.parameters.moveBias = vector[offset];
     }
@@ -162,54 +170,185 @@ class TinyNeuralPolicyValueModel {
 
   hiddenState(input) {
     const output = new Array(this.hiddenSize).fill(0);
+    const preactivations = new Array(this.hiddenSize).fill(0);
     for (let hidden = 0; hidden < this.hiddenSize; hidden += 1) {
       let sum = this.parameters.hiddenBias[hidden];
       const base = hidden * this.inputSize;
       for (let index = 0; index < this.inputSize; index += 1) {
         sum += this.parameters.inputWeights[base + index] * input[index];
       }
+      preactivations[hidden] = sum;
       output[hidden] = softsign(sum);
     }
-    return output;
+    return { hidden: output, preactivations };
   }
 
-  evaluatePosition(game) {
+  policyContext(hidden) {
+    const context = this.parameters.policyMoveBias.slice();
+    for (let hiddenIndex = 0; hiddenIndex < this.hiddenSize; hiddenIndex += 1) {
+      const value = hidden[hiddenIndex];
+      const base = hiddenIndex * this.moveFeatureSize;
+      for (let featureIndex = 0; featureIndex < this.moveFeatureSize; featureIndex += 1) {
+        context[featureIndex] += value * this.parameters.policyInteraction[base + featureIndex];
+      }
+    }
+    return context;
+  }
+
+  forward(game) {
     const input = boardTensor(game);
-    const hidden = this.hiddenState(input);
+    const { hidden, preactivations } = this.hiddenState(input);
     const value = tanh(
       hidden.reduce((sum, node, index) => sum + (node * this.parameters.valueWeights[index]), this.parameters.valueBias)
     );
+    const context = this.policyContext(hidden);
 
     const moves = game.moves({ verbose: true });
     if (moves.length === 0) {
-      return { value, policy: [] };
+      return {
+        value,
+        policy: [],
+        input,
+        hidden,
+        preactivations,
+        context,
+        moves: [],
+        logits: [],
+      };
     }
 
     const ranked = moves.map((move) => {
       const moveFeatures = moveFeatureVector(game, move);
       let logit = this.parameters.moveBias;
-      for (let index = 0; index < hidden.length; index += 1) {
-        logit += hidden[index] * this.parameters.moveWeights[index];
-      }
       for (let index = 0; index < moveFeatures.length; index += 1) {
-        logit += moveFeatures[index] * this.parameters.moveWeights[hidden.length + index];
+        logit += moveFeatures[index] * context[index];
       }
       return {
         move: move.san,
         prior: logit,
+        features: moveFeatures,
       };
-    })
-      .sort((a, b) => b.prior - a.prior)
-      .slice(0, this.expansionWidth);
+    }).sort((a, b) => b.prior - a.prior);
 
-    const logits = ranked.map((entry) => Math.exp(Math.max(-10, Math.min(10, entry.prior))));
+    const shortlisted = ranked.slice(0, this.expansionWidth);
+
+    const logits = shortlisted.map((entry) => Math.exp(Math.max(-10, Math.min(10, entry.prior))));
     const total = logits.reduce((sum, entry) => sum + entry, 0) || 1;
-    const policy = ranked.map((entry, index) => ({
+    const policy = shortlisted.map((entry, index) => ({
       move: entry.move,
       prior: logits[index] / total,
     }));
 
-    return { value, policy };
+    return {
+      value,
+      policy,
+      input,
+      hidden,
+      preactivations,
+      context,
+      moves: shortlisted,
+      logits,
+    };
+  }
+
+  evaluatePosition(game) {
+    const forward = this.forward(game);
+    return {
+      value: forward.value,
+      policy: forward.policy,
+    };
+  }
+
+  trainOnExamples(examples, options = {}) {
+    const learningRate = options.learningRate ?? 0.01;
+    const epochs = options.epochs ?? 1;
+    const policyWeight = options.policyWeight ?? 1.0;
+    const valueWeight = options.valueWeight ?? 0.25;
+    const losses = [];
+
+    for (let epoch = 0; epoch < epochs; epoch += 1) {
+      let epochLoss = 0;
+      for (const example of examples) {
+        const game = new Chess(example.fen);
+        const forward = this.forward(game);
+        if (forward.moves.length === 0) continue;
+
+        const targetIndex = forward.moves.findIndex((move) => move.move === example.bestMove);
+        if (targetIndex === -1) continue;
+
+        const probabilities = forward.policy.map((entry) => entry.prior);
+        const targetValue = typeof example.targetValue === 'number' ? example.targetValue : 0;
+        const valueError = forward.value - targetValue;
+        const clippedProb = Math.max(probabilities[targetIndex], 1e-9);
+        const policyLoss = -Math.log(clippedProb);
+        const valueLoss = valueError * valueError;
+        epochLoss += (policyWeight * policyLoss) + (valueWeight * valueLoss);
+
+        const gradMoveBias = 0;
+        const gradPolicyMoveBias = new Array(this.moveFeatureSize).fill(0);
+        const gradPolicyInteraction = new Array(this.hiddenSize * this.moveFeatureSize).fill(0);
+        const gradValueWeights = new Array(this.hiddenSize).fill(0);
+        let gradValueBias = 0;
+        const gradHidden = new Array(this.hiddenSize).fill(0);
+
+        const dValuePre = 2 * valueWeight * valueError * (1 - (forward.value * forward.value));
+        for (let index = 0; index < this.hiddenSize; index += 1) {
+          gradValueWeights[index] += dValuePre * forward.hidden[index];
+          gradHidden[index] += dValuePre * this.parameters.valueWeights[index];
+        }
+        gradValueBias += dValuePre;
+
+        const accumulatedMoveFeatureGrad = new Array(this.moveFeatureSize).fill(0);
+        for (let moveIndex = 0; moveIndex < forward.moves.length; moveIndex += 1) {
+          const expected = moveIndex === targetIndex ? 1 : 0;
+          const dLogit = policyWeight * (probabilities[moveIndex] - expected);
+          const move = forward.moves[moveIndex];
+          for (let featureIndex = 0; featureIndex < this.moveFeatureSize; featureIndex += 1) {
+            const contribution = dLogit * move.features[featureIndex];
+            accumulatedMoveFeatureGrad[featureIndex] += contribution;
+            gradPolicyMoveBias[featureIndex] += contribution;
+          }
+        }
+
+        for (let hiddenIndex = 0; hiddenIndex < this.hiddenSize; hiddenIndex += 1) {
+          const base = hiddenIndex * this.moveFeatureSize;
+          for (let featureIndex = 0; featureIndex < this.moveFeatureSize; featureIndex += 1) {
+            const interactionGrad = forward.hidden[hiddenIndex] * accumulatedMoveFeatureGrad[featureIndex];
+            gradPolicyInteraction[base + featureIndex] += interactionGrad;
+            gradHidden[hiddenIndex] += this.parameters.policyInteraction[base + featureIndex] * accumulatedMoveFeatureGrad[featureIndex];
+          }
+        }
+
+        for (let hiddenIndex = 0; hiddenIndex < this.hiddenSize; hiddenIndex += 1) {
+          const preactivation = forward.preactivations[hiddenIndex];
+          const derivative = 1 / ((1 + Math.abs(preactivation)) ** 2);
+          const dPreactivation = gradHidden[hiddenIndex] * derivative;
+          this.parameters.hiddenBias[hiddenIndex] -= learningRate * dPreactivation;
+          const base = hiddenIndex * this.inputSize;
+          for (let inputIndex = 0; inputIndex < this.inputSize; inputIndex += 1) {
+            this.parameters.inputWeights[base + inputIndex] -= learningRate * dPreactivation * forward.input[inputIndex];
+          }
+        }
+
+        for (let index = 0; index < this.hiddenSize; index += 1) {
+          this.parameters.valueWeights[index] -= learningRate * gradValueWeights[index];
+        }
+        this.parameters.valueBias -= learningRate * gradValueBias;
+        for (let index = 0; index < gradPolicyMoveBias.length; index += 1) {
+          this.parameters.policyMoveBias[index] -= learningRate * gradPolicyMoveBias[index];
+        }
+        for (let index = 0; index < gradPolicyInteraction.length; index += 1) {
+          this.parameters.policyInteraction[index] -= learningRate * gradPolicyInteraction[index];
+        }
+        this.parameters.moveBias -= learningRate * gradMoveBias;
+      }
+      losses.push(examples.length > 0 ? epochLoss / examples.length : 0);
+    }
+
+    return {
+      loss: losses[losses.length - 1] ?? 0,
+      losses,
+    };
   }
 }
 
