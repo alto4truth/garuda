@@ -1523,6 +1523,9 @@ fn main() {
                 }
             }
             let mut total_evaluations = 0usize;
+            let mut best_updated_fitness = f32::NEG_INFINITY;
+            let mut best_generation = 0usize;
+            let mut best_vector = vector.clone();
             for generation in 0..generations.max(1) {
                 let (
                     initial_fitness,
@@ -1579,9 +1582,21 @@ fn main() {
                         std::process::exit(2);
                     }
                 }
+                if updated_fitness > best_updated_fitness {
+                    best_updated_fitness = updated_fitness;
+                    best_generation = generation + 1;
+                    best_vector = next_vector.clone();
+                    if let Some(run_dir) = run_dir.as_deref() {
+                        let best_path = format!("{run_dir}/best.vec");
+                        if let Err(error) = write_vector_file(&best_path, &best_vector) {
+                            eprintln!("{error}");
+                            std::process::exit(2);
+                        }
+                    }
+                }
                 vector = next_vector;
             }
-            if let Err(error) = write_vector_file(&output_vector_file, &vector) {
+            if let Err(error) = write_vector_file(&output_vector_file, &best_vector) {
                 eprintln!("{error}");
                 std::process::exit(2);
             }
@@ -1593,7 +1608,7 @@ fn main() {
                 }
             }
             let final_result = match evaluate_mcts_model_against_uci(
-                TinyNeuralModel::from_parameter_vector(&vector).unwrap_or_default(),
+                TinyNeuralModel::from_parameter_vector(&best_vector).unwrap_or_default(),
                 &engine_command,
                 &uci_config,
             ) {
@@ -1606,7 +1621,9 @@ fn main() {
             if let Some(run_dir) = run_dir.as_deref() {
                 let summary_path = format!("{run_dir}/summary.txt");
                 let summary = format!(
-                    "final_fitness={}\ntotal_evaluations={}\ngaruda_wins={}\nuci_wins={}\ndraws={}\noutput_vector={}\nlatest_vector={run_dir}/latest.vec\n",
+                    "best_generation={}\nbest_updated_fitness={}\nfinal_fitness={}\ntotal_evaluations={}\ngaruda_wins={}\nuci_wins={}\ndraws={}\noutput_vector={}\nlatest_vector={run_dir}/latest.vec\nbest_vector={run_dir}/best.vec\n",
+                    best_generation,
+                    best_updated_fitness,
                     final_result.fitness,
                     total_evaluations,
                     final_result.garuda_wins,
@@ -1624,6 +1641,8 @@ fn main() {
             println!("garuda_wins {}", final_result.garuda_wins);
             println!("uci_wins {}", final_result.uci_wins);
             println!("draws {}", final_result.draws);
+            println!("best_generation {}", best_generation);
+            println!("best_updated_fitness {}", best_updated_fitness);
             println!("output_vector {}", output_vector_file);
             if let Some(run_dir) = run_dir.as_deref() {
                 println!("run_dir {}", run_dir);
