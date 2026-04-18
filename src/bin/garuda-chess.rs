@@ -1604,22 +1604,9 @@ fn main() {
                 }
             };
             if let Some(run_dir) = run_dir.as_deref() {
-                let progress_path = format!("{run_dir}/progress.tsv");
                 let summary_path = format!("{run_dir}/summary.txt");
-                if let Err(error) = append_file_line(
-                    &progress_path,
-                    &format!(
-                        "final\t{0}\t{0}\t{0}\t{1}\t{2}",
-                        final_result.fitness,
-                        total_evaluations,
-                        format!("{run_dir}/latest.vec")
-                    ),
-                ) {
-                    eprintln!("{error}");
-                    std::process::exit(2);
-                }
                 let summary = format!(
-                    "final_fitness={}\ntotal_evaluations={}\ngaruda_wins={}\nuci_wins={}\ndraws={}\noutput_vector={}\n",
+                    "final_fitness={}\ntotal_evaluations={}\ngaruda_wins={}\nuci_wins={}\ndraws={}\noutput_vector={}\nlatest_vector={run_dir}/latest.vec\n",
                     final_result.fitness,
                     total_evaluations,
                     final_result.garuda_wins,
