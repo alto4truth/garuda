@@ -13,6 +13,10 @@ if [[ ! -x "$RUNNER" ]]; then
 fi
 
 cd "$ROOT_DIR"
+if [[ ! -x "$ROOT_DIR/target/debug/garuda-chess" ]]; then
+  cargo build --bin garuda-chess
+fi
+
 for depth in 2 3 4; do
   for quiescence in 4 6; do
     echo "=== depth=$depth quiescence=$quiescence games=$GAMES plies=$PLIES movetime_ms=$MOVETIME_MS ==="
