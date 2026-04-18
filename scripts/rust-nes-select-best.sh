@@ -13,7 +13,7 @@ fi
 
 best_line="$(
   tail -n +2 "$SUMMARY_FILE" \
-    | awk -F $'\t' '{print ($5 - $6) "\t" $7 "\t" $4 "\t" $0}' \
+    | awk -F $'\t' '{print ($7 - $8) "\t" $9 "\t" $6 "\t" $0}' \
     | sort -t $'\t' -k1,1nr -k2,2nr -k3,3nr \
     | head -n 1 \
     | cut -f4-
@@ -27,10 +27,12 @@ fi
 best_seed="$(printf "%s\n" "$best_line" | cut -f1)"
 best_vector="$(printf "%s\n" "$best_line" | cut -f2)"
 best_run_dir="$(printf "%s\n" "$best_line" | cut -f3)"
-best_fitness="$(printf "%s\n" "$best_line" | cut -f4)"
-best_bo_garuda_wins="$(printf "%s\n" "$best_line" | cut -f5)"
-best_bo_uci_wins="$(printf "%s\n" "$best_line" | cut -f6)"
-best_bo_draws="$(printf "%s\n" "$best_line" | cut -f7)"
+best_generation="$(printf "%s\n" "$best_line" | cut -f4)"
+best_updated_fitness="$(printf "%s\n" "$best_line" | cut -f5)"
+best_fitness="$(printf "%s\n" "$best_line" | cut -f6)"
+best_bo_garuda_wins="$(printf "%s\n" "$best_line" | cut -f7)"
+best_bo_uci_wins="$(printf "%s\n" "$best_line" | cut -f8)"
+best_bo_draws="$(printf "%s\n" "$best_line" | cut -f9)"
 
 if [[ ! -f "$best_vector" ]]; then
   echo "best vector from summary is missing: $best_vector" >&2
@@ -46,6 +48,8 @@ fi
 echo "best_seed=$best_seed"
 echo "best_vector=$best_vector"
 echo "best_run_dir=$best_run_dir"
+echo "best_generation=$best_generation"
+echo "best_updated_fitness=$best_updated_fitness"
 echo "best_fitness=$best_fitness"
 echo "best_bo_garuda_wins=$best_bo_garuda_wins"
 echo "best_bo_uci_wins=$best_bo_uci_wins"

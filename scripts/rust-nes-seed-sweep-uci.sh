@@ -41,10 +41,12 @@ SUMMARY_FILE="$OUTPUT_DIR/summary.tsv"
 BEST_VECTOR_FILE="$OUTPUT_DIR/best.vec"
 BEST_RUN_DIR="$OUTPUT_DIR/best.run"
 BEST_SUMMARY_FILE="$OUTPUT_DIR/best.tsv"
-printf "seed\tvector_file\trun_dir\tuci_fitness\tbo_garuda_wins\tbo_uci_wins\tbo_draws\n" > "$SUMMARY_FILE"
+printf "seed\tvector_file\trun_dir\tbest_generation\tbest_updated_fitness\tuci_fitness\tbo_garuda_wins\tbo_uci_wins\tbo_draws\n" > "$SUMMARY_FILE"
 best_seed=""
 best_vector_file=""
 best_run_dir=""
+best_generation=""
+best_updated_fitness=""
 best_uci_fitness=""
 best_bo_balance=""
 best_bo_draws=""
@@ -61,6 +63,9 @@ for seed in $SEEDS; do
   echo "=== seed=$seed eval ==="
   eval_output="$("$EVALUATOR" "$vector_file" "$TRAIN_GAMES" "$TRAIN_PLIES" "$TRAIN_MOVETIME_MS" "$SIMULATIONS" "$CPUCT")"
   printf "%s\n" "$eval_output"
+  train_summary_file="$run_dir/summary.txt"
+  best_generation_for_seed="$(sed -n 's/^best_generation=\(.*\)$/\1/p' "$train_summary_file")"
+  best_updated_fitness_for_seed="$(sed -n 's/^best_updated_fitness=\(.*\)$/\1/p' "$train_summary_file")"
   uci_fitness="$(printf "%s\n" "$eval_output" | sed -n 's/^fitness \(.*\)$/\1/p')"
 
   echo
@@ -73,8 +78,8 @@ for seed in $SEEDS; do
   bo_draws="$(printf "%s\n" "$summary_line" | sed -n 's/.*draws=\([0-9][0-9]*\).*/\1/p')"
   bo_balance=$((bo_garuda_wins - bo_uci_wins))
 
-  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
-    "$seed" "$vector_file" "$run_dir" "$uci_fitness" "$bo_garuda_wins" "$bo_uci_wins" "$bo_draws" >> "$SUMMARY_FILE"
+  printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+    "$seed" "$vector_file" "$run_dir" "$best_generation_for_seed" "$best_updated_fitness_for_seed" "$uci_fitness" "$bo_garuda_wins" "$bo_uci_wins" "$bo_draws" >> "$SUMMARY_FILE"
 
   if [[ -z "$best_seed" ]] \
     || [[ "$bo_balance" -gt "$best_bo_balance" ]] \
@@ -84,14 +89,16 @@ for seed in $SEEDS; do
     best_seed="$seed"
     best_vector_file="$vector_file"
     best_run_dir="$run_dir"
+    best_generation="$best_generation_for_seed"
+    best_updated_fitness="$best_updated_fitness_for_seed"
     best_uci_fitness="$uci_fitness"
     best_bo_balance="$bo_balance"
     best_bo_draws="$bo_draws"
     cp "$vector_file" "$BEST_VECTOR_FILE"
     rm -rf "$BEST_RUN_DIR"
     cp -R "$run_dir" "$BEST_RUN_DIR"
-    printf "seed\tvector_file\trun_dir\tuci_fitness\tbo_balance\tbo_draws\n%s\t%s\t%s\t%s\t%s\t%s\n" \
-      "$seed" "$vector_file" "$run_dir" "$uci_fitness" "$bo_balance" "$bo_draws" > "$BEST_SUMMARY_FILE"
+    printf "seed\tvector_file\trun_dir\tbest_generation\tbest_updated_fitness\tuci_fitness\tbo_balance\tbo_draws\n%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+      "$seed" "$vector_file" "$run_dir" "$best_generation_for_seed" "$best_updated_fitness_for_seed" "$uci_fitness" "$bo_balance" "$bo_draws" > "$BEST_SUMMARY_FILE"
   fi
   echo
 done
@@ -104,6 +111,8 @@ if [[ -n "$best_seed" ]]; then
   echo "best_seed=$best_seed"
   echo "best_source_vector=$best_vector_file"
   echo "best_run_dir=$best_run_dir"
+  echo "best_generation=$best_generation"
+  echo "best_updated_fitness=$best_updated_fitness"
   echo "best_uci_fitness=$best_uci_fitness"
   echo "best_bo_balance=$best_bo_balance"
   echo "best_bo_draws=$best_bo_draws"
