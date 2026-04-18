@@ -1,6 +1,14 @@
 const { ZKProof, MerkleTree, Blockchain, ZKPBlockchain } = require('../crypto/blockchain-zkp');
 const { Chess } = require('chess.js');
 const { HeuristicPolicyValueModel, TinyFeaturePolicyValueModel, MCTSEngine, parseBestMove } = require('../chess/mcts-stockfish');
+const {
+  NESTuner,
+  evaluateMixedFitness,
+  evaluatePolicyVector,
+  evaluateSelfPlayFitness,
+  playSelfPlayGame,
+  runSmokeTune,
+} = require('../chess/nes-tuner');
 const { P2PNetwork, ZKP2PNetwork, DHT } = require('../p2p/network');
 const { LLVMDataLayer, LLVMTestingHarness } = require('../llvm/datalayer');
 const { LRU, BloomFilter, Graph, Queue, RateLimiter, CircuitBreaker, PubSub, Cache } = require('../utils/structures');
@@ -257,6 +265,58 @@ test('TinyFeaturePolicyValueModel emits value and policy', () => {
   const output = model.evaluatePosition(new Chess());
   if (typeof output.value !== 'number') throw new Error('Missing tiny value');
   if (!Array.isArray(output.policy) || output.policy.length === 0) throw new Error('Missing tiny policy');
+});
+
+test('TinyFeaturePolicyValueModel round-trips parameter vector', () => {
+  const model = new TinyFeaturePolicyValueModel();
+  const vector = model.getParameterVector();
+  const nudged = vector.map((value, index) => value + index + 1);
+  model.setParameterVector(nudged);
+  const after = model.getParameterVector();
+  if (after.length !== nudged.length) throw new Error('Parameter length changed');
+  if (!after.every((value, index) => value === nudged[index])) throw new Error('Parameter round-trip failed');
+});
+
+test('evaluatePolicyVector returns numeric fitness', () => {
+  const model = new TinyFeaturePolicyValueModel();
+  const score = evaluatePolicyVector(model.getParameterVector(), { iterations: 8 });
+  if (typeof score !== 'number' || Number.isNaN(score)) throw new Error('Fitness score invalid');
+});
+
+test('NES smoke tune runs end-to-end', () => {
+  const result = runSmokeTune({
+    populationSize: 2,
+    generations: 1,
+    iterations: 2,
+    maxPlies: 8,
+    seed: 7,
+  });
+  if (typeof result.baselineScore !== 'number') throw new Error('Missing baseline score');
+  if (typeof result.bestScore !== 'number') throw new Error('Missing best score');
+  if (!Array.isArray(result.bestVector) || result.bestVector.length === 0) throw new Error('Missing best vector');
+});
+
+test('self-play fitness returns numeric score', () => {
+  const model = new TinyFeaturePolicyValueModel();
+  const vector = model.getParameterVector();
+  const score = evaluateSelfPlayFitness(vector, { iterations: 2, maxPlies: 8 });
+  if (typeof score !== 'number' || Number.isNaN(score)) throw new Error('Self-play score invalid');
+});
+
+test('mixed fitness returns numeric score', () => {
+  const model = new TinyFeaturePolicyValueModel();
+  const vector = model.getParameterVector();
+  const score = evaluateMixedFitness(vector, { iterations: 2, maxPlies: 8 });
+  if (typeof score !== 'number' || Number.isNaN(score)) throw new Error('Mixed fitness invalid');
+});
+
+test('self-play game runs and returns summary', () => {
+  const model = new TinyFeaturePolicyValueModel();
+  const vector = model.getParameterVector();
+  const result = playSelfPlayGame(vector, vector, { iterations: 2, maxPlies: 8 });
+  if (typeof result.result !== 'number') throw new Error('Missing self-play result');
+  if (typeof result.plies !== 'number') throw new Error('Missing plies');
+  if (typeof result.pgn !== 'string') throw new Error('Missing PGN');
 });
 
 console.log('\n═══════════════════════════════════════════════════');

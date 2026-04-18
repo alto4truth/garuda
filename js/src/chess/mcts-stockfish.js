@@ -4,7 +4,6 @@
  */
 
 const { Chess } = require('chess.js');
-const initStockfish = require('stockfish');
 
 const PIECE_VALUES = {
   p: 100,
@@ -243,6 +242,77 @@ class TinyFeaturePolicyValueModel {
     this.innerCenterSquares = new Set(['c3', 'd3', 'e3', 'f3', 'c4', 'd4', 'e4', 'f4', 'c5', 'd5', 'e5', 'f5', 'c6', 'd6', 'e6', 'f6']);
     this.riskyPawnSquares = new Set(['f3', 'f4', 'g3', 'g4', 'f6', 'f5', 'g6', 'g5']);
     this.cornerPawnSquares = new Set(['a3', 'a6', 'h3', 'h6']);
+    this.weights = {
+      bishopPairBonus: options.bishopPairBonus ?? 30,
+      knightCountBonus: options.knightCountBonus ?? 10,
+      mobilityBonus: options.mobilityBonus ?? 6,
+      castleBonus: options.castleBonus ?? 500,
+      developmentBonus: options.developmentBonus ?? 160,
+      quietBishopBonus: options.quietBishopBonus ?? 120,
+      centerBonus: options.centerBonus ?? 260,
+      innerCenterBonus: options.innerCenterBonus ?? 100,
+      queenEarlyPenalty: options.queenEarlyPenalty ?? 350,
+      kingWalkPenalty: options.kingWalkPenalty ?? 1400,
+      riskyPawnPenalty: options.riskyPawnPenalty ?? 1400,
+      edgePawnPenalty: options.edgePawnPenalty ?? 180,
+      captureBaseBonus: options.captureBaseBonus ?? 5000,
+      captureVictimScale: options.captureVictimScale ?? 12,
+      promotionBonus: options.promotionBonus ?? 7000,
+      checkBonus: options.checkBonus ?? 2500,
+      mateBonus: options.mateBonus ?? 100000,
+      pawnShieldHomeBonus: options.pawnShieldHomeBonus ?? 18,
+      pawnShieldCenterBonus: options.pawnShieldCenterBonus ?? 10,
+      pawnShieldQueenBonus: options.pawnShieldQueenBonus ?? 4,
+      pawnShieldLooseBonus: options.pawnShieldLooseBonus ?? 6,
+      pawnAdvanceScale: options.pawnAdvanceScale ?? 5,
+    };
+  }
+
+  static parameterKeys() {
+    return [
+      'bishopPairBonus',
+      'knightCountBonus',
+      'mobilityBonus',
+      'castleBonus',
+      'developmentBonus',
+      'quietBishopBonus',
+      'centerBonus',
+      'innerCenterBonus',
+      'queenEarlyPenalty',
+      'kingWalkPenalty',
+      'riskyPawnPenalty',
+      'edgePawnPenalty',
+      'captureBaseBonus',
+      'captureVictimScale',
+      'promotionBonus',
+      'checkBonus',
+      'mateBonus',
+      'pawnShieldHomeBonus',
+      'pawnShieldCenterBonus',
+      'pawnShieldQueenBonus',
+      'pawnShieldLooseBonus',
+      'pawnAdvanceScale',
+    ];
+  }
+
+  getParameterVector() {
+    return TinyFeaturePolicyValueModel.parameterKeys().map((key) => this.weights[key]);
+  }
+
+  setParameterVector(vector) {
+    const keys = TinyFeaturePolicyValueModel.parameterKeys();
+    keys.forEach((key, index) => {
+      if (typeof vector[index] === 'number' && Number.isFinite(vector[index])) {
+        this.weights[key] = vector[index];
+      }
+    });
+    return this;
+  }
+
+  clone() {
+    const clone = new TinyFeaturePolicyValueModel({ expansionWidth: this.expansionWidth });
+    clone.setParameterVector(this.getParameterVector());
+    return clone;
   }
 
   evaluatePosition(game) {
@@ -282,14 +352,14 @@ class TinyFeaturePolicyValueModel {
       }
     }
 
-    if (whiteBishops >= 2) score += 30;
-    if (blackBishops >= 2) score -= 30;
-    score += 10 * (whiteKnights - blackKnights);
+    if (whiteBishops >= 2) score += this.weights.bishopPairBonus;
+    if (blackBishops >= 2) score -= this.weights.bishopPairBonus;
+    score += this.weights.knightCountBonus * (whiteKnights - blackKnights);
     score += this.pawnShieldScore(game, 'w');
     score -= this.pawnShieldScore(game, 'b');
 
     const mobility = Math.min(game.moves().length, 20);
-    score += (game.turn() === 'w' ? 1 : -1) * mobility * 6;
+    score += (game.turn() === 'w' ? 1 : -1) * mobility * this.weights.mobilityBonus;
 
     return Math.tanh((score * (game.turn() === 'w' ? 1 : -1)) / 900);
   }
@@ -320,27 +390,27 @@ class TinyFeaturePolicyValueModel {
     const attackerValue = this.pieceValues[move.piece] || 0;
     let score = 0;
 
-    if (move.san.includes('#')) score += 100000;
-    if (move.san.includes('+')) score += 2500;
-    if (move.captured) score += 5000 + (12 * victimValue) - attackerValue;
-    if (move.promotion) score += 7000 + (this.pieceValues[move.promotion] || 0);
-    if (move.flags.includes('k') || move.flags.includes('q')) score += 1200;
-    if (move.piece === 'n' || move.piece === 'b') score += 160;
-    if (move.piece === 'q' && moveNumber < 10) score -= 350;
-    if (move.piece === 'k' && !move.flags.includes('k') && !move.flags.includes('q')) score -= 1400;
-    if (move.piece === 'p' && moveNumber < 10 && this.riskyPawnSquares.has(move.to)) score -= 1400;
-    if (move.piece === 'p' && moveNumber < 10 && this.cornerPawnSquares.has(move.to)) score -= 180;
-    if (this.centerSquares.has(move.to)) score += 260;
-    if (this.innerCenterSquares.has(move.to)) score += 100;
-    if (move.from === 'e1' && move.to === 'g1') score += 500;
-    if (move.from === 'e8' && move.to === 'g8') score += 500;
+    if (move.san.includes('#')) score += this.weights.mateBonus;
+    if (move.san.includes('+')) score += this.weights.checkBonus;
+    if (move.captured) score += this.weights.captureBaseBonus + (this.weights.captureVictimScale * victimValue) - attackerValue;
+    if (move.promotion) score += this.weights.promotionBonus + (this.pieceValues[move.promotion] || 0);
+    if (move.flags.includes('k') || move.flags.includes('q')) score += this.weights.castleBonus * 0.6;
+    if (move.piece === 'n' || move.piece === 'b') score += this.weights.developmentBonus;
+    if (move.piece === 'q' && moveNumber < 10) score -= this.weights.queenEarlyPenalty;
+    if (move.piece === 'k' && !move.flags.includes('k') && !move.flags.includes('q')) score -= this.weights.kingWalkPenalty;
+    if (move.piece === 'p' && moveNumber < 10 && this.riskyPawnSquares.has(move.to)) score -= this.weights.riskyPawnPenalty;
+    if (move.piece === 'p' && moveNumber < 10 && this.cornerPawnSquares.has(move.to)) score -= this.weights.edgePawnPenalty;
+    if (this.centerSquares.has(move.to)) score += this.weights.centerBonus;
+    if (this.innerCenterSquares.has(move.to)) score += this.weights.innerCenterBonus;
+    if (move.from === 'e1' && move.to === 'g1') score += this.weights.castleBonus;
+    if (move.from === 'e8' && move.to === 'g8') score += this.weights.castleBonus;
     if ((move.from === 'b1' || move.from === 'g1' || move.from === 'b8' || move.from === 'g8')
       && ['c3', 'f3', 'c6', 'f6', 'd2', 'e2', 'd7', 'e7'].includes(move.to)) {
-      score += 220;
+      score += this.weights.developmentBonus + 60;
     }
     if ((move.from === 'c1' || move.from === 'f1' || move.from === 'c8' || move.from === 'f8')
       && !move.captured) {
-      score += 120;
+      score += this.weights.quietBishopBonus;
     }
 
     return score;
@@ -354,7 +424,9 @@ class TinyFeaturePolicyValueModel {
   }
 
   pawnAdvanceBonus(color, rank) {
-    return color === 'w' ? ((6 - rank) * 5) : ((rank - 1) * 5);
+    return color === 'w'
+      ? ((6 - rank) * this.weights.pawnAdvanceScale)
+      : ((rank - 1) * this.weights.pawnAdvanceScale);
   }
 
   pawnShieldScore(game, color) {
@@ -378,12 +450,12 @@ class TinyFeaturePolicyValueModel {
     const kingHome = board[kingRank][4];
     const kingCastled = board[kingRank][6];
     if (kingCastled && kingCastled.type === 'k' && kingCastled.color === color) {
-      return homeShield * 18;
+      return homeShield * this.weights.pawnShieldHomeBonus;
     }
     if (kingHome && kingHome.type === 'k' && kingHome.color === color) {
-      return homeShield * 10 + queenShield * 4;
+      return homeShield * this.weights.pawnShieldCenterBonus + queenShield * this.weights.pawnShieldQueenBonus;
     }
-    return homeShield * 6;
+    return homeShield * this.weights.pawnShieldLooseBonus;
   }
 }
 
@@ -607,6 +679,7 @@ function parseBestMove(line) {
 }
 
 async function createStockfishSession(flavor = 'lite-single', depth = 8) {
+  const initStockfish = require('stockfish');
   const engine = await initStockfish(flavor);
   const session = new StockfishSession(engine, flavor);
   await session.initialize(depth);

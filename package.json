@@ -6,6 +6,9 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "chess:eval": "node js/src/chess/cli.js eval",
+    "chess:selfplay": "node js/src/chess/cli.js selfplay",
+    "chess:tune": "node js/src/chess/cli.js tune",
     "test": "node js/src/tests/all.test.js",
     "lint": "eslint src --ext .ts"
   },
