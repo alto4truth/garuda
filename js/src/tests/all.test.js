@@ -1,4 +1,6 @@
 const { ZKProof, MerkleTree, Blockchain, ZKPBlockchain } = require('../crypto/blockchain-zkp');
+const { Chess } = require('chess.js');
+const { HeuristicPolicyValueModel, TinyFeaturePolicyValueModel, MCTSEngine, parseBestMove } = require('../chess/mcts-stockfish');
 const { P2PNetwork, ZKP2PNetwork, DHT } = require('../p2p/network');
 const { LLVMDataLayer, LLVMTestingHarness } = require('../llvm/datalayer');
 const { LRU, BloomFilter, Graph, Queue, RateLimiter, CircuitBreaker, PubSub, Cache } = require('../utils/structures');
@@ -227,6 +229,34 @@ test('PubSub publish/subscribe', () => {
   ps.publish('test', 'data');
   ps.publish('test', 'data');
   if (received !== 2) throw new Error('PubSub failed');
+});
+
+console.log('\n=== CHESS: MCTS ===');
+test('MCTSEngine bestMove returns legal move', () => {
+  const engine = new MCTSEngine();
+  const game = new Chess();
+  const move = engine.bestMove(game.fen(), 32);
+  if (!move) throw new Error('No move returned');
+  if (!game.moves().includes(move)) throw new Error('Illegal move returned');
+});
+
+test('parseBestMove reads UCI output', () => {
+  const move = parseBestMove('bestmove e2e4 ponder e7e5');
+  if (move !== 'e2e4') throw new Error('bestmove parse failed');
+});
+
+test('HeuristicPolicyValueModel emits value and policy', () => {
+  const model = new HeuristicPolicyValueModel();
+  const output = model.evaluatePosition(new Chess());
+  if (typeof output.value !== 'number') throw new Error('Missing value');
+  if (!Array.isArray(output.policy) || output.policy.length === 0) throw new Error('Missing policy');
+});
+
+test('TinyFeaturePolicyValueModel emits value and policy', () => {
+  const model = new TinyFeaturePolicyValueModel();
+  const output = model.evaluatePosition(new Chess());
+  if (typeof output.value !== 'number') throw new Error('Missing tiny value');
+  if (!Array.isArray(output.policy) || output.policy.length === 0) throw new Error('Missing tiny policy');
 });
 
 console.log('\n═══════════════════════════════════════════════════');
