@@ -7,6 +7,12 @@ pub const DEFAULT_POLICY_WIDTH: usize = 8;
 pub const TINY_INPUT_SIZE: usize = 96;
 pub const TINY_HIDDEN_SIZE: usize = 32;
 pub const TINY_MOVE_FEATURES: usize = 12;
+const PROMOTION_PIECES: [PieceKind; 4] = [
+    PieceKind::Queen,
+    PieceKind::Rook,
+    PieceKind::Bishop,
+    PieceKind::Knight,
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
@@ -1205,7 +1211,9 @@ impl Position {
                 let promotion_rank = matches!(color, Color::White) && next_rank == 7
                     || matches!(color, Color::Black) && next_rank == 0;
                 if promotion_rank {
-                    moves.push(ChessMove::new(from, to).with_promotion(PieceKind::Queen));
+                    for promotion in PROMOTION_PIECES {
+                        moves.push(ChessMove::new(from, to).with_promotion(promotion));
+                    }
                 } else {
                     moves.push(ChessMove::new(from, to));
                     if from.rank() == start_rank {
@@ -1227,9 +1235,17 @@ impl Position {
                 continue;
             }
             let to = Square::from_file_rank(file as u8, next_rank as u8).unwrap();
+            let promotion_rank = matches!(color, Color::White) && next_rank == 7
+                || matches!(color, Color::Black) && next_rank == 0;
             if let Some(piece) = self.piece_at(to) {
                 if piece.color != color {
-                    moves.push(ChessMove::new(from, to));
+                    if promotion_rank {
+                        for promotion in PROMOTION_PIECES {
+                            moves.push(ChessMove::new(from, to).with_promotion(promotion));
+                        }
+                    } else {
+                        moves.push(ChessMove::new(from, to));
+                    }
                 }
             } else if self.en_passant_target == Some(to) {
                 moves.push(ChessMove::new(from, to));
@@ -1904,6 +1920,34 @@ mod tests {
                 .as_deref(),
             Some("g8=Q+")
         );
+    }
+
+    #[test]
+    fn legal_moves_include_all_forward_promotion_variants() {
+        let position = Position::from_fen("4k3/6P1/8/8/8/8/8/4K3 w - - 0 1").unwrap();
+        let ucis = position
+            .legal_moves()
+            .into_iter()
+            .map(|chess_move| chess_move.uci())
+            .collect::<Vec<_>>();
+        assert!(ucis.contains(&"g7g8q".to_string()));
+        assert!(ucis.contains(&"g7g8r".to_string()));
+        assert!(ucis.contains(&"g7g8b".to_string()));
+        assert!(ucis.contains(&"g7g8n".to_string()));
+    }
+
+    #[test]
+    fn legal_moves_include_all_capture_promotion_variants() {
+        let position = Position::from_fen("4k2r/6P1/8/8/8/8/8/4K3 w - - 0 1").unwrap();
+        let ucis = position
+            .legal_moves()
+            .into_iter()
+            .map(|chess_move| chess_move.uci())
+            .collect::<Vec<_>>();
+        assert!(ucis.contains(&"g7h8q".to_string()));
+        assert!(ucis.contains(&"g7h8r".to_string()));
+        assert!(ucis.contains(&"g7h8b".to_string()));
+        assert!(ucis.contains(&"g7h8n".to_string()));
     }
 
     #[test]
