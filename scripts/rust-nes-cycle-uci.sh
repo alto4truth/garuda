@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TRAINER="$ROOT_DIR/scripts/rust-nes-train-uci.sh"
+EVALUATOR="$ROOT_DIR/scripts/rust-nes-eval-uci.sh"
+BO_RUNNER="$ROOT_DIR/scripts/rust-bo-stockfish-mcts.sh"
+OUTPUT_VECTOR="${1:-$ROOT_DIR/rust-nes-cycle.vec}"
+INPUT_VECTOR="${2:-/tmp/garuda-model.vec}"
+GENERATIONS="${3:-4}"
+POPULATION_SIZE="${4:-4}"
+SIGMA="${5:-0.02}"
+LEARNING_RATE="${6:-0.01}"
+SEED="${7:-7}"
+GAMES="${8:-2}"
+PLIES="${9:-12}"
+MOVETIME_MS="${10:-10}"
+SIMULATIONS="${11:-16}"
+CPUCT="${12:-1.35}"
+BO_GAMES="${13:-10}"
+BO_PLIES="${14:-0}"
+BO_MOVETIME_MS="${15:-20}"
+
+if [[ ! -x "$TRAINER" ]]; then
+  echo "missing trainer at $TRAINER" >&2
+  exit 1
+fi
+
+if [[ ! -x "$EVALUATOR" ]]; then
+  echo "missing evaluator at $EVALUATOR" >&2
+  exit 1
+fi
+
+if [[ ! -x "$BO_RUNNER" ]]; then
+  echo "missing bo runner at $BO_RUNNER" >&2
+  exit 1
+fi
+
+cd "$ROOT_DIR"
+
+echo "=== train ==="
+"$TRAINER" "$OUTPUT_VECTOR" "$INPUT_VECTOR" \
+  "$GENERATIONS" "$POPULATION_SIZE" "$SIGMA" "$LEARNING_RATE" "$SEED" \
+  "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT"
+
+echo
+echo "=== eval ==="
+"$EVALUATOR" "$OUTPUT_VECTOR" "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT"
+
+echo
+echo "=== bo ==="
+"$BO_RUNNER" "$BO_GAMES" "$BO_PLIES" "$BO_MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$OUTPUT_VECTOR"
