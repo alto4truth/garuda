@@ -9,6 +9,12 @@ const {
   playSelfPlayGame,
   runSmokeTune,
 } = require('../chess/nes-tuner');
+const {
+  aggregateGenerationResults,
+  buildGenerationManifest,
+  evaluateDistributedTask,
+  runDistributedTune,
+} = require('../chess/distributed');
 const { P2PNetwork, ZKP2PNetwork, DHT } = require('../p2p/network');
 const { LLVMDataLayer, LLVMTestingHarness } = require('../llvm/datalayer');
 const { LRU, BloomFilter, Graph, Queue, RateLimiter, CircuitBreaker, PubSub, Cache } = require('../utils/structures');
@@ -317,6 +323,65 @@ test('self-play game runs and returns summary', () => {
   if (typeof result.result !== 'number') throw new Error('Missing self-play result');
   if (typeof result.plies !== 'number') throw new Error('Missing plies');
   if (typeof result.pgn !== 'string') throw new Error('Missing PGN');
+});
+
+test('distributed manifest builds candidate tasks', () => {
+  const manifest = buildGenerationManifest({
+    populationSize: 3,
+    seed: 11,
+  });
+  if (manifest.kind !== 'nes-generation-manifest') throw new Error('Wrong manifest kind');
+  if (!Array.isArray(manifest.tasks) || manifest.tasks.length !== 3) throw new Error('Wrong task count');
+  if (!Array.isArray(manifest.tasks[0].vector) || manifest.tasks[0].vector.length === 0) throw new Error('Missing task vector');
+});
+
+test('distributed worker evaluates a manifest task', () => {
+  const manifest = buildGenerationManifest({
+    populationSize: 1,
+    seed: 11,
+    iterations: 2,
+    maxPlies: 8,
+  });
+  const result = evaluateDistributedTask(manifest.tasks[0], {
+    iterations: 2,
+    maxPlies: 8,
+  });
+  if (result.id !== manifest.tasks[0].id) throw new Error('Wrong task result id');
+  if (typeof result.score !== 'number' || Number.isNaN(result.score)) throw new Error('Invalid distributed score');
+});
+
+test('distributed aggregation reduces worker results', () => {
+  const manifest = buildGenerationManifest({
+    populationSize: 2,
+    seed: 7,
+    iterations: 2,
+    maxPlies: 8,
+  });
+  const results = manifest.tasks.map((task) => evaluateDistributedTask(task, {
+    iterations: 2,
+    maxPlies: 8,
+  }));
+  const summary = aggregateGenerationResults(manifest, results, {
+    iterations: 2,
+    maxPlies: 8,
+  });
+  if (summary.kind !== 'nes-generation-summary') throw new Error('Wrong summary kind');
+  if (!Array.isArray(summary.nextCenter) || summary.nextCenter.length !== manifest.center.length) throw new Error('Invalid next center');
+  if (typeof summary.nextCenterScore !== 'number' || Number.isNaN(summary.nextCenterScore)) throw new Error('Invalid center score');
+});
+
+test('distributed tune runs end-to-end', () => {
+  const result = runDistributedTune({
+    populationSize: 2,
+    generations: 1,
+    iterations: 2,
+    maxPlies: 8,
+    seed: 5,
+  });
+  if (result.kind !== 'nes-distributed-run') throw new Error('Wrong distributed run kind');
+  if (typeof result.baselineScore !== 'number') throw new Error('Missing distributed baseline');
+  if (typeof result.bestScore !== 'number') throw new Error('Missing distributed best score');
+  if (!Array.isArray(result.history) || result.history.length < 2) throw new Error('Missing distributed history');
 });
 
 console.log('\n═══════════════════════════════════════════════════');

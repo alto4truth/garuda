@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const path = require('path');
 const { TinyFeaturePolicyValueModel } = require('./mcts-stockfish');
 const {
   evaluateMixedFitness,
@@ -8,6 +9,14 @@ const {
   playSelfPlayGame,
   runSmokeTune,
 } = require('./nes-tuner');
+const {
+  aggregateGenerationResults,
+  buildGenerationManifest,
+  evaluateDistributedTask,
+  readJsonFile,
+  runDistributedTune,
+  writeJsonFile,
+} = require('./distributed');
 
 function parseArgs(argv) {
   const args = { _: [] };
@@ -46,6 +55,37 @@ function parseVector(input) {
   return parsed.map((value) => Number(value));
 }
 
+function parseJson(input, label) {
+  if (!input) return null;
+  return JSON.parse(input);
+}
+
+function parseMaybeFile(input, filePath, label) {
+  if (filePath) {
+    return readJsonFile(path.resolve(filePath));
+  }
+  return parseJson(input, label);
+}
+
+function emitJson(payload, outputPath) {
+  if (outputPath) {
+    writeJsonFile(path.resolve(outputPath), payload);
+  }
+  console.log(JSON.stringify(payload, null, 2));
+}
+
+function selectTaskPayload(input, args) {
+  if (!input) return null;
+  if (input.kind === 'nes-generation-manifest') {
+    const taskIndex = parseNumber(args.taskIndex, 0);
+    if (!Array.isArray(input.tasks) || !input.tasks[taskIndex]) {
+      throw new Error(`Manifest does not contain task index ${taskIndex}`);
+    }
+    return input.tasks[taskIndex];
+  }
+  return input;
+}
+
 function buildOptions(args) {
   return {
     iterations: parseNumber(args.iterations, 6),
@@ -58,6 +98,7 @@ function buildOptions(args) {
     seed: parseNumber(args.seed, 1337),
     tacticalWeight: parseNumber(args.tacticalWeight, 0.55),
     selfPlayWeight: parseNumber(args.selfPlayWeight, 0.45),
+    fitness: args.fitness || 'mixed',
   };
 }
 
@@ -69,17 +110,17 @@ function main() {
 
   switch (command) {
     case 'vector':
-      console.log(JSON.stringify({
+      emitJson({
         vector,
         parameterCount: vector.length,
-      }, null, 2));
+      }, args.out);
       break;
     case 'eval':
-      console.log(JSON.stringify({
+      emitJson({
         tactical: evaluatePolicyVector(vector, options),
         selfPlay: evaluateSelfPlayFitness(vector, options),
         mixed: evaluateMixedFitness(vector, options),
-      }, null, 2));
+      }, args.out);
       break;
     case 'selfplay': {
       const baseline = args.baseline ? parseVector(args.baseline) : new TinyFeaturePolicyValueModel().getParameterVector();
@@ -88,14 +129,14 @@ function main() {
         candidateColor: args.color || 'w',
         startFen: args.fen,
       });
-      console.log(JSON.stringify({
+      emitJson({
         result: result.result,
         survived: result.survived,
         plies: result.plies,
         mobility: result.mobility,
         fen: result.fen,
         pgn: result.pgn,
-      }, null, 2));
+      }, args.out);
       break;
     }
     case 'tune': {
@@ -107,7 +148,42 @@ function main() {
             ? evaluateSelfPlayFitness
             : evaluateMixedFitness,
       });
-      console.log(JSON.stringify(result, null, 2));
+      emitJson(result, args.out);
+      break;
+    }
+    case 'dist:plan': {
+      const manifest = buildGenerationManifest({
+        ...options,
+        generation: parseNumber(args.generation, 1),
+        centerVector: args.center ? parseVector(args.center) : vector,
+      });
+      emitJson(manifest, args.out);
+      break;
+    }
+    case 'dist:worker': {
+      const taskInput = parseMaybeFile(args.task, args.taskFile, 'task');
+      const task = selectTaskPayload(taskInput, args);
+      if (!task) {
+        throw new Error('dist:worker requires --task or --taskFile');
+      }
+      emitJson(evaluateDistributedTask(task, options), args.out);
+      break;
+    }
+    case 'dist:aggregate': {
+      const manifest = parseMaybeFile(args.manifest, args.manifestFile, 'manifest');
+      const results = parseMaybeFile(args.results, args.resultsFile, 'results');
+      if (!manifest || !Array.isArray(results)) {
+        throw new Error('dist:aggregate requires --manifest/--manifestFile and --results/--resultsFile');
+      }
+      emitJson(aggregateGenerationResults(manifest, results, options), args.out);
+      break;
+    }
+    case 'dist:tune': {
+      const result = runDistributedTune({
+        ...options,
+        vector,
+      });
+      emitJson(result, args.out);
       break;
     }
     default:
@@ -116,6 +192,10 @@ function main() {
   node js/src/chess/cli.js eval [--vector '[...]']
   node js/src/chess/cli.js selfplay [--vector '[...]'] [--baseline '[...]'] [--color w|b] [--fen FEN]
   node js/src/chess/cli.js tune [--fitness mixed|selfplay|tactical] [--populationSize N] [--generations N]
+  node js/src/chess/cli.js dist:plan [--fitness mixed|selfplay|tactical] [--generation N] [--center '[...]'] [--out file.json]
+  node js/src/chess/cli.js dist:worker [--task '{...}' | --taskFile task.json] [--taskIndex N] [--out file.json]
+  node js/src/chess/cli.js dist:aggregate [--manifest '{...}' | --manifestFile manifest.json] [--results '[...]' | --resultsFile results.json] [--out file.json]
+  node js/src/chess/cli.js dist:tune [--fitness mixed|selfplay|tactical] [--populationSize N] [--generations N]
 `);
   }
 }
