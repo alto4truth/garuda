@@ -252,6 +252,13 @@ impl CastlingRights {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameStatus {
+    Ongoing,
+    Checkmate { loser: Color },
+    Stalemate { side_to_move: Color },
+}
+
 #[derive(Debug, Clone)]
 pub struct Position {
     board: [Option<Piece>; BOARD_SQUARES],
@@ -726,6 +733,22 @@ impl Position {
             .collect()
     }
 
+    pub fn game_status(&self) -> GameStatus {
+        let legal_moves = self.legal_moves();
+        if !legal_moves.is_empty() {
+            return GameStatus::Ongoing;
+        }
+        if self.is_in_check(self.side_to_move) {
+            GameStatus::Checkmate {
+                loser: self.side_to_move,
+            }
+        } else {
+            GameStatus::Stalemate {
+                side_to_move: self.side_to_move,
+            }
+        }
+    }
+
     fn push_move_if_valid(&self, from: Square, file: i8, rank: i8, moves: &mut Vec<ChessMove>) -> bool {
         if !(0..8).contains(&file) || !(0..8).contains(&rank) {
             return false;
@@ -999,12 +1022,14 @@ impl PolicyValueModel for TinyNeuralModel {
 
         let moves = position.legal_moves();
         if moves.is_empty() {
+            let terminal_value = match position.game_status() {
+                GameStatus::Checkmate { loser } if loser == position.side_to_move() => -1.0,
+                GameStatus::Checkmate { .. } => 1.0,
+                GameStatus::Stalemate { .. } => 0.0,
+                GameStatus::Ongoing => value,
+            };
             return PolicyValue {
-                value: if position.is_in_check(position.side_to_move()) {
-                    -1.0
-                } else {
-                    value
-                },
+                value: terminal_value,
                 policy: Vec::new(),
             };
         }
@@ -1268,5 +1293,24 @@ mod tests {
         );
         assert!(next.piece_at(Square::from_algebraic("d5").unwrap()).is_none());
         assert_eq!(next.to_fen(), "4k3/8/3P4/8/8/8/8/4K3 b - - 0 1");
+    }
+
+    #[test]
+    fn detects_checkmate_and_stalemate() {
+        let checkmate = Position::from_fen("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1").unwrap();
+        assert_eq!(
+            checkmate.game_status(),
+            GameStatus::Checkmate {
+                loser: Color::Black,
+            }
+        );
+
+        let stalemate = Position::from_fen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1").unwrap();
+        assert_eq!(
+            stalemate.game_status(),
+            GameStatus::Stalemate {
+                side_to_move: Color::Black,
+            }
+        );
     }
 }

@@ -1,9 +1,10 @@
-use garuda::chess::{Engine, Position, SearchConfig, TinyNeuralModel};
+use garuda::chess::{Engine, GameStatus, Position, SearchConfig, TinyNeuralModel};
 
 fn print_usage() {
     eprintln!("usage:");
     eprintln!("  garuda-chess bestmove [fen]");
     eprintln!("  garuda-chess apply <fen> <uci>");
+    eprintln!("  garuda-chess status [fen]");
 }
 
 fn main() {
@@ -33,6 +34,30 @@ fn main() {
                     std::process::exit(3);
                 }
             }
+        }
+        "status" => {
+            let fen = args
+                .next()
+                .unwrap_or_else(|| Position::STARTPOS_FEN.to_string());
+            let position = match Position::from_fen(&fen) {
+                Ok(position) => position,
+                Err(error) => {
+                    eprintln!("invalid fen: {error}");
+                    std::process::exit(2);
+                }
+            };
+            let status = match position.game_status() {
+                GameStatus::Ongoing => "ongoing",
+                GameStatus::Checkmate { loser } => match loser {
+                    garuda::chess::Color::White => "checkmate:white-loses",
+                    garuda::chess::Color::Black => "checkmate:black-loses",
+                },
+                GameStatus::Stalemate { side_to_move } => match side_to_move {
+                    garuda::chess::Color::White => "stalemate:white-to-move",
+                    garuda::chess::Color::Black => "stalemate:black-to-move",
+                },
+            };
+            println!("{status}");
         }
         "apply" => {
             let Some(fen) = args.next() else {
