@@ -1,3 +1,4 @@
+use std::fs;
 use garuda::chess::{Engine, GameStatus, Position, SearchConfig, TinyNeuralModel};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
@@ -8,7 +9,7 @@ fn print_usage() {
     eprintln!("  garuda-chess apply <fen> <uci>");
     eprintln!("  garuda-chess status [fen]");
     eprintln!("  garuda-chess match-uci <engine_command> [plies] [movetime_ms] [garuda_color] [garuda_depth] [garuda_quiescence]");
-    eprintln!("  garuda-chess bo-uci <engine_command> [games] [plies] [movetime_ms] [garuda_depth] [garuda_quiescence]");
+    eprintln!("  garuda-chess bo-uci <engine_command> [games] [plies] [movetime_ms] [garuda_depth] [garuda_quiescence] [openings_file]");
 }
 
 struct UciEngine {
@@ -144,6 +145,24 @@ fn build_search_config(depth: usize, quiescence_depth: usize) -> SearchConfig {
     }
 }
 
+fn load_openings(path: &str) -> Result<Vec<Position>, String> {
+    let contents = fs::read_to_string(path).map_err(|error| format!("failed to read openings file: {error}"))?;
+    let mut openings = Vec::new();
+    for (line_index, line) in contents.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let position = Position::from_fen(trimmed)
+            .map_err(|error| format!("invalid FEN on line {}: {error}", line_index + 1))?;
+        openings.push(position);
+    }
+    if openings.is_empty() {
+        return Err("openings file contained no usable FEN positions".to_string());
+    }
+    Ok(openings)
+}
+
 fn play_match_game(
     engine: &Engine<TinyNeuralModel>,
     uci: &mut UciEngine,
@@ -151,8 +170,9 @@ fn play_match_game(
     movetime_ms: u64,
     garuda_color: garuda::chess::Color,
     emit_moves: bool,
+    start_position: &Position,
 ) -> Result<Position, String> {
-    let mut position = Position::starting_position();
+    let mut position = start_position.clone();
     for ply in 0..plies {
         if position.game_status() != GameStatus::Ongoing {
             break;
@@ -282,7 +302,16 @@ fn main() {
                     std::process::exit(2);
                 }
             };
-            let position = match play_match_game(&engine, &mut uci, plies, movetime_ms, garuda_color, true) {
+            let start_position = Position::starting_position();
+            let position = match play_match_game(
+                &engine,
+                &mut uci,
+                plies,
+                movetime_ms,
+                garuda_color,
+                true,
+                &start_position,
+            ) {
                 Ok(position) => position,
                 Err(error) => {
                     eprintln!("{error}");
@@ -303,6 +332,16 @@ fn main() {
             let garuda_depth = parse_usize_arg(args.next(), SearchConfig::default().max_depth);
             let garuda_quiescence =
                 parse_usize_arg(args.next(), SearchConfig::default().quiescence_depth);
+            let openings = match args.next() {
+                Some(path) => match load_openings(&path) {
+                    Ok(openings) => openings,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                },
+                None => vec![Position::starting_position()],
+            };
 
             let engine = Engine::new(
                 TinyNeuralModel::default(),
@@ -325,6 +364,7 @@ fn main() {
                 } else {
                     garuda::chess::Color::Black
                 };
+                let start_position = &openings[game_index % openings.len()];
                 let position = match play_match_game(
                     &engine,
                     &mut uci,
@@ -332,6 +372,7 @@ fn main() {
                     movetime_ms,
                     garuda_color,
                     false,
+                    start_position,
                 ) {
                     Ok(position) => position,
                     Err(error) => {
