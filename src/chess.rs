@@ -1078,6 +1078,7 @@ impl PolicyValueModel for TinyNeuralModel {
 pub struct SearchConfig {
     pub cpuct: f32,
     pub root_policy_width: usize,
+    pub max_depth: usize,
 }
 
 impl Default for SearchConfig {
@@ -1085,6 +1086,7 @@ impl Default for SearchConfig {
         Self {
             cpuct: 1.35,
             root_policy_width: DEFAULT_POLICY_WIDTH,
+            max_depth: 2,
         }
     }
 }
@@ -1106,11 +1108,74 @@ impl<M: PolicyValueModel> Engine<M> {
     }
 
     pub fn best_move(&self, position: &Position) -> Option<ChessMove> {
-        self.evaluate(position)
-            .policy
+        let moves = self.ordered_moves(position);
+        if moves.is_empty() {
+            return None;
+        }
+
+        let mut best_move = None;
+        let mut best_score = f32::NEG_INFINITY;
+        let mut alpha = f32::NEG_INFINITY;
+        let beta = f32::INFINITY;
+        for chess_move in moves {
+            let child = position.apply_move(&chess_move);
+            let score = -self.negamax(&child, self.config.max_depth.saturating_sub(1), -beta, -alpha);
+            if score > best_score {
+                best_score = score;
+                best_move = Some(chess_move);
+            }
+            alpha = alpha.max(score);
+        }
+        best_move
+    }
+
+    fn ordered_moves(&self, position: &Position) -> Vec<ChessMove> {
+        let legal_moves = position.legal_moves();
+        if legal_moves.is_empty() {
+            return legal_moves;
+        }
+        let priors = self.evaluate(position).policy;
+        let mut scored_moves: Vec<(ChessMove, f32)> = legal_moves
             .into_iter()
-            .max_by(|a, b| a.prior.partial_cmp(&b.prior).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|entry| entry.chess_move)
+            .map(|chess_move| {
+                let prior = priors
+                    .iter()
+                    .find(|entry| entry.chess_move == chess_move)
+                    .map(|entry| entry.prior)
+                    .unwrap_or(0.0);
+                (chess_move, prior)
+            })
+            .collect();
+        scored_moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored_moves.into_iter().map(|(chess_move, _)| chess_move).collect()
+    }
+
+    fn negamax(&self, position: &Position, depth: usize, mut alpha: f32, beta: f32) -> f32 {
+        match position.game_status() {
+            GameStatus::Checkmate { .. } => return -10_000.0 - depth as f32,
+            GameStatus::Stalemate { .. } => return 0.0,
+            GameStatus::Ongoing => {}
+        }
+        if depth == 0 {
+            return self.evaluate(position).value * 100.0;
+        }
+
+        let moves = self.ordered_moves(position);
+        if moves.is_empty() {
+            return self.evaluate(position).value * 100.0;
+        }
+
+        let mut best_score = f32::NEG_INFINITY;
+        for chess_move in moves {
+            let child = position.apply_move(&chess_move);
+            let score = -self.negamax(&child, depth - 1, -beta, -alpha);
+            best_score = best_score.max(score);
+            alpha = alpha.max(score);
+            if alpha >= beta {
+                break;
+            }
+        }
+        best_score
     }
 }
 
@@ -1156,6 +1221,20 @@ mod tests {
         let engine = Engine::new(TinyNeuralModel::default(), SearchConfig::default());
         let best_move = engine.best_move(&Position::starting_position());
         assert!(best_move.is_some());
+    }
+
+    #[test]
+    fn engine_finds_mate_in_one() {
+        let position = Position::from_fen("7k/R7/6K1/8/8/8/8/8 w - - 0 1").unwrap();
+        let engine = Engine::new(
+            TinyNeuralModel::default(),
+            SearchConfig {
+                max_depth: 2,
+                ..SearchConfig::default()
+            },
+        );
+        let best_move = engine.best_move(&position).unwrap();
+        assert_eq!(best_move.uci(), "a7a8");
     }
 
     #[test]
