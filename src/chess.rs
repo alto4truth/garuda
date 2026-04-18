@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 
 pub const BOARD_SQUARES: usize = 64;
@@ -805,6 +807,51 @@ impl Position {
         cloned
     }
 
+    fn zobrist_like_key(&self) -> u64 {
+        let mut key = 0xcbf2_9ce4_8422_2325u64;
+        for (square, piece) in self.iter_pieces() {
+            let piece_code = match (piece.color, piece.kind) {
+                (Color::White, PieceKind::Pawn) => 0x11u64,
+                (Color::White, PieceKind::Knight) => 0x12u64,
+                (Color::White, PieceKind::Bishop) => 0x13u64,
+                (Color::White, PieceKind::Rook) => 0x14u64,
+                (Color::White, PieceKind::Queen) => 0x15u64,
+                (Color::White, PieceKind::King) => 0x16u64,
+                (Color::Black, PieceKind::Pawn) => 0x21u64,
+                (Color::Black, PieceKind::Knight) => 0x22u64,
+                (Color::Black, PieceKind::Bishop) => 0x23u64,
+                (Color::Black, PieceKind::Rook) => 0x24u64,
+                (Color::Black, PieceKind::Queen) => 0x25u64,
+                (Color::Black, PieceKind::King) => 0x26u64,
+            };
+            let mix = ((square.0 as u64) << 8) ^ piece_code;
+            key ^= mix.wrapping_mul(0x1000_0000_01b3);
+            key = key.rotate_left(7).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+        }
+
+        if self.side_to_move == Color::Black {
+            key ^= 0xf0f0_f0f0_f0f0_f0f0;
+        }
+        if self.castling_rights.white_kingside {
+            key ^= 0x0101_0101_0101_0101;
+        }
+        if self.castling_rights.white_queenside {
+            key ^= 0x0202_0202_0202_0202;
+        }
+        if self.castling_rights.black_kingside {
+            key ^= 0x0404_0404_0404_0404;
+        }
+        if self.castling_rights.black_queenside {
+            key ^= 0x0808_0808_0808_0808;
+        }
+        if let Some(square) = self.en_passant_target {
+            key ^= 0x1111_0000_0000_1111 ^ square.0 as u64;
+        }
+        key ^= (self.halfmove_clock as u64) << 32;
+        key ^= self.fullmove_number as u64;
+        key
+    }
+
     fn push_move_if_valid(&self, from: Square, file: i8, rank: i8, moves: &mut Vec<ChessMove>) -> bool {
         if !(0..8).contains(&file) || !(0..8).contains(&rank) {
             return false;
@@ -1150,11 +1197,16 @@ impl Default for SearchConfig {
 pub struct Engine<M: PolicyValueModel> {
     model: M,
     config: SearchConfig,
+    table: RefCell<HashMap<(u64, usize), f32>>,
 }
 
 impl<M: PolicyValueModel> Engine<M> {
     pub fn new(model: M, config: SearchConfig) -> Self {
-        Self { model, config }
+        Self {
+            model,
+            config,
+            table: RefCell::new(HashMap::new()),
+        }
     }
 
     pub fn evaluate(&self, position: &Position) -> PolicyValue {
@@ -1217,6 +1269,11 @@ impl<M: PolicyValueModel> Engine<M> {
             return self.leaf_score(position);
         }
 
+        let cache_key = (position.zobrist_like_key(), depth);
+        if let Some(score) = self.table.borrow().get(&cache_key).copied() {
+            return score;
+        }
+
         let moves = self.ordered_moves(position);
         if moves.is_empty() {
             return self.leaf_score(position);
@@ -1232,6 +1289,7 @@ impl<M: PolicyValueModel> Engine<M> {
                 break;
             }
         }
+        self.table.borrow_mut().insert(cache_key, best_score);
         best_score
     }
 
