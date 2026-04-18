@@ -59,6 +59,27 @@ impl PieceKind {
             PieceKind::King => 20_000.0,
         }
     }
+
+    pub fn piece_square_bonus(self, square: Square, color: Color) -> f32 {
+        let rank = if color == Color::White {
+            square.rank() as f32
+        } else {
+            7.0 - square.rank() as f32
+        };
+        let file = square.file() as f32;
+        let center_distance = (file - 3.5).abs() + (rank - 3.5).abs();
+        match self {
+            PieceKind::Pawn => rank * 6.0 - (file - 3.5).abs() * 1.5,
+            PieceKind::Knight => 18.0 - center_distance * 4.0,
+            PieceKind::Bishop => 14.0 - center_distance * 2.5 + rank * 1.5,
+            PieceKind::Rook => rank * 3.0 - (file - 3.5).abs(),
+            PieceKind::Queen => 8.0 - center_distance * 1.5,
+            PieceKind::King => {
+                let shelter = if rank <= 1.0 { 18.0 } else { 0.0 };
+                shelter - center_distance * 2.0
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -773,6 +794,17 @@ impl Position {
             })
             .sum::<f32>();
 
+        let piece_square_score = self
+            .iter_pieces()
+            .map(|(square, piece)| {
+                let bonus = piece.kind.piece_square_bonus(square, piece.color);
+                match piece.color {
+                    Color::White => bonus,
+                    Color::Black => -bonus,
+                }
+            })
+            .sum::<f32>();
+
         let mobility_score = {
             let white_moves = self.clone_for_side(Color::White).pseudo_legal_moves().len() as f32;
             let black_moves = self.clone_for_side(Color::Black).pseudo_legal_moves().len() as f32;
@@ -794,7 +826,7 @@ impl Position {
             }
         };
 
-        let signed_score = material_score + mobility_score + king_safety_score;
+        let signed_score = material_score + piece_square_score + mobility_score + king_safety_score;
         match self.side_to_move {
             Color::White => signed_score,
             Color::Black => -signed_score,
@@ -1392,6 +1424,13 @@ mod tests {
         let winning = Position::from_fen("4k3/8/8/8/8/8/Q7/4K3 w - - 0 1").unwrap();
         let equal = Position::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1").unwrap();
         assert!(winning.static_eval() > equal.static_eval());
+    }
+
+    #[test]
+    fn static_eval_rewards_piece_activity() {
+        let centralized = Position::from_fen("4k3/8/8/3N4/8/8/8/4K3 w - - 0 1").unwrap();
+        let rim = Position::from_fen("4k3/8/8/8/8/8/N7/4K3 w - - 0 1").unwrap();
+        assert!(centralized.static_eval() > rim.static_eval());
     }
 
     #[test]
