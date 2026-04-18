@@ -811,6 +811,29 @@ impl Position {
             (white_moves - black_moves) * 2.0
         };
 
+        let tactical_vulnerability_score = self
+            .iter_pieces()
+            .map(|(square, piece)| {
+                if piece.kind == PieceKind::King {
+                    return 0.0;
+                }
+                let attacked = self.is_square_attacked(square, piece.color.opposite());
+                let defended = self.is_square_attacked(square, piece.color);
+                if !attacked {
+                    return 0.0;
+                }
+                let penalty = if defended {
+                    piece.kind.centipawn_value() * 0.08
+                } else {
+                    piece.kind.centipawn_value() * 0.18
+                };
+                match piece.color {
+                    Color::White => -penalty,
+                    Color::Black => penalty,
+                }
+            })
+            .sum::<f32>();
+
         let king_safety_score = match self.game_status() {
             GameStatus::Checkmate { loser: Color::White } => -10_000.0,
             GameStatus::Checkmate { loser: Color::Black } => 10_000.0,
@@ -826,7 +849,11 @@ impl Position {
             }
         };
 
-        let signed_score = material_score + piece_square_score + mobility_score + king_safety_score;
+        let signed_score = material_score
+            + piece_square_score
+            + mobility_score
+            + tactical_vulnerability_score
+            + king_safety_score;
         match self.side_to_move {
             Color::White => signed_score,
             Color::Black => -signed_score,
@@ -1511,6 +1538,13 @@ mod tests {
         let centralized = Position::from_fen("4k3/8/8/3N4/8/8/8/4K3 w - - 0 1").unwrap();
         let rim = Position::from_fen("4k3/8/8/8/8/8/N7/4K3 w - - 0 1").unwrap();
         assert!(centralized.static_eval() > rim.static_eval());
+    }
+
+    #[test]
+    fn static_eval_penalizes_hanging_pieces() {
+        let hanging = Position::from_fen("4k3/8/8/8/4r3/8/4Q3/4K3 w - - 0 1").unwrap();
+        let safe = Position::from_fen("4k3/8/8/8/8/8/4Q3/4K3 w - - 0 1").unwrap();
+        assert!(safe.static_eval() > hanging.static_eval());
     }
 
     #[test]
