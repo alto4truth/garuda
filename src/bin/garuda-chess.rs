@@ -24,6 +24,8 @@ fn print_usage() {
     eprintln!("  garuda-chess match-uci-mcts-vector <engine_command> <vector_file> [max_plies_or_0] [movetime_ms] [garuda_color] [simulations] [cpuct]");
     eprintln!("  garuda-chess bo-uci-mcts <engine_command> [games] [max_plies_or_0] [movetime_ms] [simulations] [cpuct] [openings_file]");
     eprintln!("  garuda-chess bo-uci-mcts-vector <engine_command> <vector_file> [games] [max_plies_or_0] [movetime_ms] [simulations] [cpuct] [openings_file]");
+    eprintln!("  garuda-chess nes-eval-uci <engine_command> [vector_file] [games] [max_plies_or_0] [movetime_ms] [simulations] [cpuct] [openings_file]");
+    eprintln!("  garuda-chess nes-train-uci <engine_command> <output_vector_file> [input_vector_file] [generations] [population_size] [sigma] [learning_rate] [seed] [games] [max_plies_or_0] [movetime_ms] [simulations] [cpuct] [openings_file]");
 }
 
 struct UciEngine {
@@ -403,6 +405,199 @@ fn summarize_bo_result(
             "draw"
         }
     }
+}
+
+#[derive(Clone)]
+struct UciFitnessConfig {
+    games: usize,
+    max_plies: Option<usize>,
+    movetime_ms: u64,
+    simulations: usize,
+    cpuct: f32,
+    openings: Vec<Position>,
+}
+
+#[derive(Debug, Clone)]
+struct UciFitnessResult {
+    fitness: f32,
+    garuda_wins: usize,
+    uci_wins: usize,
+    draws: usize,
+}
+
+#[derive(Debug, Clone)]
+struct CliXorShift64 {
+    state: u64,
+}
+
+impl CliXorShift64 {
+    fn new(seed: u64) -> Self {
+        Self { state: seed.max(1) }
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        let mut value = self.state;
+        value ^= value << 13;
+        value ^= value >> 7;
+        value ^= value << 17;
+        self.state = value;
+        value
+    }
+
+    fn next_f32(&mut self) -> f32 {
+        let value = self.next_u64() >> 40;
+        (value as f32) / ((1u32 << 24) as f32)
+    }
+
+    fn standard_normal(&mut self) -> f32 {
+        let u1 = self.next_f32().max(1.0e-7);
+        let u2 = self.next_f32();
+        let radius = (-2.0 * u1.ln()).sqrt();
+        let theta = 2.0 * std::f32::consts::PI * u2;
+        radius * theta.cos()
+    }
+}
+
+fn evaluate_mcts_model_against_uci(
+    model: TinyNeuralModel,
+    engine_command: &str,
+    config: &UciFitnessConfig,
+) -> Result<UciFitnessResult, String> {
+    let engine = MctsEngine::new(model, build_mcts_config(config.simulations, config.cpuct));
+    let mut uci = UciEngine::spawn(engine_command)?;
+    let mut garuda_wins = 0usize;
+    let mut uci_wins = 0usize;
+    let mut draws = 0usize;
+
+    for game_index in 0..config.games {
+        let garuda_color = if game_index % 2 == 0 {
+            garuda::chess::Color::White
+        } else {
+            garuda::chess::Color::Black
+        };
+        let start_position = &config.openings[game_index % config.openings.len()];
+        let (_position, status, _san_moves) = play_match_game(
+            |position, repetition_history| {
+                engine.best_move_with_history(position, repetition_history)
+            },
+            &mut uci,
+            config.max_plies,
+            config.movetime_ms,
+            garuda_color,
+            false,
+            start_position,
+        )?;
+        let _ = summarize_bo_result(
+            status,
+            garuda_color,
+            &mut garuda_wins,
+            &mut uci_wins,
+            &mut draws,
+        );
+    }
+
+    Ok(UciFitnessResult {
+        fitness: garuda_wins as f32 + (draws as f32 * 0.5),
+        garuda_wins,
+        uci_wins,
+        draws,
+    })
+}
+
+fn run_nes_step_uci(
+    base_vector: &[f32],
+    nes_config: NesConfig,
+    engine_command: &str,
+    uci_config: &UciFitnessConfig,
+) -> Result<(f32, f32, f32, usize, Vec<f32>), String> {
+    let initial = evaluate_mcts_model_against_uci(
+        TinyNeuralModel::from_parameter_vector(base_vector)?,
+        engine_command,
+        uci_config,
+    )?
+    .fitness;
+    let pair_count = (nes_config.population_size.max(2) + 1) / 2;
+    let sigma = nes_config.sigma.max(1.0e-4);
+    let mut rng = CliXorShift64::new(nes_config.seed);
+    let mut gradient = vec![0.0; base_vector.len()];
+    let mut best_candidate_fitness = initial;
+    let mut best_vector = base_vector.to_vec();
+    let mut evaluations = 1usize;
+
+    for _ in 0..pair_count {
+        let epsilon: Vec<f32> = (0..base_vector.len())
+            .map(|_| rng.standard_normal())
+            .collect();
+        let plus_vector: Vec<f32> = base_vector
+            .iter()
+            .zip(epsilon.iter())
+            .map(|(weight, noise)| weight + (noise * sigma))
+            .collect();
+        let minus_vector: Vec<f32> = base_vector
+            .iter()
+            .zip(epsilon.iter())
+            .map(|(weight, noise)| weight - (noise * sigma))
+            .collect();
+        let plus_fitness = evaluate_mcts_model_against_uci(
+            TinyNeuralModel::from_parameter_vector(&plus_vector)?,
+            engine_command,
+            uci_config,
+        )?
+        .fitness;
+        let minus_fitness = evaluate_mcts_model_against_uci(
+            TinyNeuralModel::from_parameter_vector(&minus_vector)?,
+            engine_command,
+            uci_config,
+        )?
+        .fitness;
+        evaluations += 2;
+
+        if plus_fitness > best_candidate_fitness {
+            best_candidate_fitness = plus_fitness;
+            best_vector = plus_vector.clone();
+        }
+        if minus_fitness > best_candidate_fitness {
+            best_candidate_fitness = minus_fitness;
+            best_vector = minus_vector.clone();
+        }
+
+        let delta = plus_fitness - minus_fitness;
+        for (index, noise) in epsilon.iter().enumerate() {
+            gradient[index] += delta * noise;
+        }
+    }
+
+    let gradient_scale = nes_config.learning_rate / (pair_count as f32 * sigma);
+    let mut updated_vector: Vec<f32> = base_vector
+        .iter()
+        .zip(gradient.iter())
+        .map(|(weight, grad)| weight + (gradient_scale * grad))
+        .collect();
+    let updated_fitness = evaluate_mcts_model_against_uci(
+        TinyNeuralModel::from_parameter_vector(&updated_vector)?,
+        engine_command,
+        uci_config,
+    )?
+    .fitness;
+    evaluations += 1;
+    if best_candidate_fitness > updated_fitness {
+        updated_vector = best_vector;
+    }
+    let final_fitness = evaluate_mcts_model_against_uci(
+        TinyNeuralModel::from_parameter_vector(&updated_vector)?,
+        engine_command,
+        uci_config,
+    )?
+    .fitness;
+    evaluations += 1;
+
+    Ok((
+        initial,
+        best_candidate_fitness,
+        final_fitness,
+        evaluations,
+        updated_vector,
+    ))
 }
 
 fn main() {
@@ -1142,6 +1337,165 @@ fn main() {
                 "summary games={} garuda_wins={} uci_wins={} draws={}",
                 games, garuda_wins, uci_wins, draws
             );
+        }
+        "nes-eval-uci" => {
+            let Some(engine_command) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let model = match args.next() {
+                Some(vector_file) => match load_model_from_vector_file(&vector_file) {
+                    Ok(model) => model,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                },
+                None => TinyNeuralModel::default(),
+            };
+            let games = parse_usize_arg(args.next(), 2);
+            let max_plies = parse_optional_plies_arg(args.next(), Some(12));
+            let movetime_ms = parse_u64_arg(args.next(), 10);
+            let simulations = parse_usize_arg(args.next(), 16);
+            let cpuct = parse_f32_arg(args.next(), MctsConfig::default().cpuct);
+            let openings = match args.next() {
+                Some(path) => match load_openings(&path) {
+                    Ok(openings) => openings,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                },
+                None => vec![Position::starting_position()],
+            };
+            let result = match evaluate_mcts_model_against_uci(
+                model,
+                &engine_command,
+                &UciFitnessConfig {
+                    games,
+                    max_plies,
+                    movetime_ms,
+                    simulations,
+                    cpuct,
+                    openings,
+                },
+            ) {
+                Ok(result) => result,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(3);
+                }
+            };
+            println!("fitness {}", result.fitness);
+            println!("garuda_wins {}", result.garuda_wins);
+            println!("uci_wins {}", result.uci_wins);
+            println!("draws {}", result.draws);
+        }
+        "nes-train-uci" => {
+            let Some(engine_command) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let Some(output_vector_file) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let mut vector = match args.next() {
+                Some(input_vector_file) => match load_parameter_vector(&input_vector_file) {
+                    Ok(vector) => vector,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                },
+                None => TinyNeuralModel::default().parameter_vector(),
+            };
+            let generations = parse_usize_arg(args.next(), 4);
+            let population_size = parse_usize_arg(args.next(), 4);
+            let sigma = parse_f32_arg(args.next(), 0.03);
+            let learning_rate = parse_f32_arg(args.next(), 0.02);
+            let seed = parse_u64_arg(args.next(), 7);
+            let games = parse_usize_arg(args.next(), 2);
+            let max_plies = parse_optional_plies_arg(args.next(), Some(12));
+            let movetime_ms = parse_u64_arg(args.next(), 10);
+            let simulations = parse_usize_arg(args.next(), 16);
+            let cpuct = parse_f32_arg(args.next(), MctsConfig::default().cpuct);
+            let openings = match args.next() {
+                Some(path) => match load_openings(&path) {
+                    Ok(openings) => openings,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                },
+                None => vec![Position::starting_position()],
+            };
+            let uci_config = UciFitnessConfig {
+                games,
+                max_plies,
+                movetime_ms,
+                simulations,
+                cpuct,
+                openings,
+            };
+            let mut total_evaluations = 0usize;
+            for generation in 0..generations.max(1) {
+                let (
+                    initial_fitness,
+                    best_candidate_fitness,
+                    updated_fitness,
+                    evaluations,
+                    next_vector,
+                ) = match run_nes_step_uci(
+                    &vector,
+                    NesConfig {
+                        population_size,
+                        sigma,
+                        learning_rate,
+                        seed: seed.wrapping_add(generation as u64),
+                    },
+                    &engine_command,
+                    &uci_config,
+                ) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(3);
+                    }
+                };
+                total_evaluations += evaluations;
+                println!(
+                    "generation {} initial_fitness={} best_candidate_fitness={} updated_fitness={}",
+                    generation + 1,
+                    initial_fitness,
+                    best_candidate_fitness,
+                    updated_fitness
+                );
+                vector = next_vector;
+            }
+            let line = vector
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            if let Err(error) = fs::write(&output_vector_file, format!("{line}\n")) {
+                eprintln!("failed to write output vector: {error}");
+                std::process::exit(2);
+            }
+            let final_fitness = match evaluate_mcts_model_against_uci(
+                TinyNeuralModel::from_parameter_vector(&vector).unwrap_or_default(),
+                &engine_command,
+                &uci_config,
+            ) {
+                Ok(result) => result.fitness,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(3);
+                }
+            };
+            println!("final_fitness {}", final_fitness);
+            println!("total_evaluations {}", total_evaluations);
+            println!("output_vector {}", output_vector_file);
         }
         _ => {
             print_usage();
