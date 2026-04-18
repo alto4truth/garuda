@@ -1340,6 +1340,44 @@ impl Default for TinyNeuralModel {
 }
 
 impl TinyNeuralModel {
+    pub fn from_parameter_vector(vector: &[f32]) -> Result<Self, String> {
+        let expected_len = Self::default().parameter_count();
+        if vector.len() != expected_len {
+            return Err(format!(
+                "expected {expected_len} parameters, received {}",
+                vector.len()
+            ));
+        }
+
+        let input_weights_len = TINY_INPUT_SIZE * TINY_HIDDEN_SIZE;
+        let hidden_bias_len = TINY_HIDDEN_SIZE;
+        let value_weights_len = TINY_HIDDEN_SIZE;
+        let policy_weights_len = TINY_HIDDEN_SIZE * TINY_MOVE_FEATURES;
+        let policy_bias_len = TINY_MOVE_FEATURES;
+
+        let mut offset = 0usize;
+        let input_weights = vector[offset..offset + input_weights_len].to_vec();
+        offset += input_weights_len;
+        let hidden_bias = vector[offset..offset + hidden_bias_len].to_vec();
+        offset += hidden_bias_len;
+        let value_weights = vector[offset..offset + value_weights_len].to_vec();
+        offset += value_weights_len;
+        let value_bias = vector[offset];
+        offset += 1;
+        let policy_weights = vector[offset..offset + policy_weights_len].to_vec();
+        offset += policy_weights_len;
+        let policy_bias = vector[offset..offset + policy_bias_len].to_vec();
+
+        Ok(Self {
+            input_weights,
+            hidden_bias,
+            value_weights,
+            value_bias,
+            policy_weights,
+            policy_bias,
+        })
+    }
+
     pub fn parameter_count(&self) -> usize {
         self.input_weights.len()
             + self.hidden_bias.len()
@@ -2214,6 +2252,14 @@ mod tests {
                 + TINY_MOVE_FEATURES
         );
         assert_eq!(model.parameter_vector().len(), model.parameter_count());
+    }
+
+    #[test]
+    fn parameter_vector_round_trips() {
+        let model = TinyNeuralModel::default();
+        let vector = model.parameter_vector();
+        let rebuilt = TinyNeuralModel::from_parameter_vector(&vector).unwrap();
+        assert_eq!(rebuilt.parameter_vector(), vector);
     }
 
     #[test]

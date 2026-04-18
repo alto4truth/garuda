@@ -8,6 +8,8 @@ fn print_usage() {
     eprintln!("usage:");
     eprintln!("  garuda-chess bestmove [fen] [garuda_depth] [garuda_quiescence]");
     eprintln!("  garuda-chess bestmove-mcts [fen] [simulations] [cpuct]");
+    eprintln!("  garuda-chess bestmove-mcts-vector <fen> <vector_file> [simulations] [cpuct]");
+    eprintln!("  garuda-chess model-vector");
     eprintln!("  garuda-chess apply <fen> <uci>");
     eprintln!("  garuda-chess status [fen]");
     eprintln!("  garuda-chess match-uci <engine_command> [max_plies_or_0] [movetime_ms] [garuda_color] [garuda_depth] [garuda_quiescence]");
@@ -190,6 +192,23 @@ fn load_openings(path: &str) -> Result<Vec<Position>, String> {
     Ok(openings)
 }
 
+fn load_parameter_vector(path: &str) -> Result<Vec<f32>, String> {
+    let contents = fs::read_to_string(path)
+        .map_err(|error| format!("failed to read parameter vector: {error}"))?;
+    let normalized = contents.replace(',', " ");
+    let mut values = Vec::new();
+    for token in normalized.split_whitespace() {
+        let value = token
+            .parse::<f32>()
+            .map_err(|error| format!("invalid float in parameter vector: {error}"))?;
+        values.push(value);
+    }
+    if values.is_empty() {
+        return Err("parameter vector file was empty".to_string());
+    }
+    Ok(values)
+}
+
 fn chrono_like_utc_date() -> String {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -356,6 +375,57 @@ fn main() {
                     std::process::exit(3);
                 }
             }
+        }
+        "bestmove-mcts-vector" => {
+            let Some(fen) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let Some(vector_file) = args.next() else {
+                print_usage();
+                std::process::exit(1);
+            };
+            let simulations = parse_usize_arg(args.next(), MctsConfig::default().simulations);
+            let cpuct = parse_f32_arg(args.next(), MctsConfig::default().cpuct);
+            let position = match Position::from_fen(&fen) {
+                Ok(position) => position,
+                Err(error) => {
+                    eprintln!("invalid fen: {error}");
+                    std::process::exit(2);
+                }
+            };
+            let vector = match load_parameter_vector(&vector_file) {
+                Ok(vector) => vector,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+            };
+            let model = match TinyNeuralModel::from_parameter_vector(&vector) {
+                Ok(model) => model,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+            };
+            let engine = MctsEngine::new(model, build_mcts_config(simulations, cpuct));
+            match engine.best_move(&position) {
+                Some(chess_move) => println!("{}", chess_move.uci()),
+                None => {
+                    eprintln!("no move available");
+                    std::process::exit(3);
+                }
+            }
+        }
+        "model-vector" => {
+            let model = TinyNeuralModel::default();
+            let vector = model.parameter_vector();
+            let line = vector
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            println!("{line}");
         }
         "status" => {
             let fen = args
