@@ -21,6 +21,10 @@ CPUCT="${12:-1.35}"
 cd "$ROOT_DIR"
 cargo build --release --bin garuda-chess >/dev/null
 
+if [[ ! -f "$INPUT_VECTOR" ]]; then
+  "$BINARY" model-vector > "$INPUT_VECTOR"
+fi
+
 exec "$BINARY" nes-train-uci \
   "$ENGINE_CMD" "$OUTPUT_VECTOR" "$INPUT_VECTOR" \
   "$GENERATIONS" "$POPULATION_SIZE" "$SIGMA" "$LEARNING_RATE" "$SEED" \

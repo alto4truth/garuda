@@ -6,7 +6,7 @@ TRAINER="$ROOT_DIR/scripts/rust-nes-train-uci.sh"
 EVALUATOR="$ROOT_DIR/scripts/rust-nes-eval-uci.sh"
 BO_RUNNER="$ROOT_DIR/scripts/rust-bo-stockfish-mcts.sh"
 OUTPUT_VECTOR="${1:-$ROOT_DIR/rust-nes-cycle.vec}"
-INPUT_VECTOR="${2:-/tmp/garuda-model.vec}"
+INPUT_VECTOR="${2:-}"
 GENERATIONS="${3:-4}"
 POPULATION_SIZE="${4:-4}"
 SIGMA="${5:-0.02}"
@@ -38,10 +38,24 @@ fi
 
 cd "$ROOT_DIR"
 
+echo "=== config ==="
+echo "output_vector=$OUTPUT_VECTOR"
+echo "input_vector=${INPUT_VECTOR:-<default-model>}"
+echo "generations=$GENERATIONS population_size=$POPULATION_SIZE sigma=$SIGMA learning_rate=$LEARNING_RATE seed=$SEED"
+echo "train_games=$GAMES train_max_plies=$PLIES train_movetime_ms=$MOVETIME_MS simulations=$SIMULATIONS cpuct=$CPUCT"
+echo "bo_games=$BO_GAMES bo_max_plies=$BO_PLIES bo_movetime_ms=$BO_MOVETIME_MS"
+echo
+
 echo "=== train ==="
-"$TRAINER" "$OUTPUT_VECTOR" "$INPUT_VECTOR" \
-  "$GENERATIONS" "$POPULATION_SIZE" "$SIGMA" "$LEARNING_RATE" "$SEED" \
-  "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT"
+if [[ -n "$INPUT_VECTOR" ]]; then
+  "$TRAINER" "$OUTPUT_VECTOR" "$INPUT_VECTOR" \
+    "$GENERATIONS" "$POPULATION_SIZE" "$SIGMA" "$LEARNING_RATE" "$SEED" \
+    "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT"
+else
+  "$TRAINER" "$OUTPUT_VECTOR" \
+    "$GENERATIONS" "$POPULATION_SIZE" "$SIGMA" "$LEARNING_RATE" "$SEED" \
+    "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT"
+fi
 
 echo
 echo "=== eval ==="
