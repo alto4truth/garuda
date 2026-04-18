@@ -40,6 +40,8 @@ BEST_RUN_DIR="$RUN_DIR/best.run"
 CURRENT_RUN_DIR="$RUN_DIR/current.run"
 CONFIG_FILE="$RUN_DIR/config.txt"
 LATEST_ROUND_FILE="$RUN_DIR/latest.round"
+CURRENT_FILE="$RUN_DIR/current.tsv"
+GLOBAL_BEST_FILE="$RUN_DIR/global-best.tsv"
 GLOBAL_BEST_ROUND=""
 GLOBAL_BEST_SEED=""
 GLOBAL_BEST_GENERATION=""
@@ -78,6 +80,8 @@ openings_file=$OPENINGS_FILE
 EOF
 
 printf "round\tsummary_file\tbest_seed\tbest_generation\tbest_updated_fitness\tbest_final_fitness\tbest_uci_fitness\tbest_bo_garuda_wins\tbest_bo_uci_wins\tbest_bo_draws\tbest_vector\tbest_run_dir\tglobal_best_round\n" > "$HISTORY_FILE"
+printf "round\tseed\tgeneration\tupdated_fitness\tfinal_fitness\tuci_fitness\tbo_garuda_wins\tbo_uci_wins\tbo_draws\tvector\trun_dir\n" > "$CURRENT_FILE"
+printf "round\tseed\tgeneration\tupdated_fitness\tfinal_fitness\tuci_fitness\tbo_garuda_wins\tbo_uci_wins\tbo_draws\tvector\trun_dir\n" > "$GLOBAL_BEST_FILE"
 
 for round in $(seq 1 "$ROUNDS"); do
   round_dir="$RUN_DIR/round-$(printf '%03d' "$round")"
@@ -109,6 +113,10 @@ for round in $(seq 1 "$ROUNDS"); do
   if [[ -n "$selected_run_dir" && -d "$selected_run_dir" ]]; then
     cp -R "$selected_run_dir" "$CURRENT_RUN_DIR"
   fi
+  printf "round\tseed\tgeneration\tupdated_fitness\tfinal_fitness\tuci_fitness\tbo_garuda_wins\tbo_uci_wins\tbo_draws\tvector\trun_dir\n%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+    "$round" "$best_seed" "$best_generation" "$best_updated_fitness" \
+    "$best_final_fitness" "$best_uci_fitness" "$best_bo_garuda_wins" \
+    "$best_bo_uci_wins" "$best_bo_draws" "$selected_vector" "${selected_run_dir:-}" > "$CURRENT_FILE"
 
   bo_balance=$((best_bo_garuda_wins - best_bo_uci_wins))
   if [[ -z "$GLOBAL_BEST_ROUND" ]] \
@@ -131,6 +139,10 @@ for round in $(seq 1 "$ROUNDS"); do
     if [[ -n "$selected_run_dir" && -d "$selected_run_dir" ]]; then
       cp -R "$selected_run_dir" "$BEST_RUN_DIR"
     fi
+    printf "round\tseed\tgeneration\tupdated_fitness\tfinal_fitness\tuci_fitness\tbo_garuda_wins\tbo_uci_wins\tbo_draws\tvector\trun_dir\n%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+      "$round" "$best_seed" "$best_generation" "$best_updated_fitness" \
+      "$best_final_fitness" "$best_uci_fitness" "$best_bo_garuda_wins" \
+      "$best_bo_uci_wins" "$best_bo_draws" "$selected_vector" "${selected_run_dir:-}" > "$GLOBAL_BEST_FILE"
   fi
 
   printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
@@ -144,6 +156,8 @@ done
 
 echo "config_file=$CONFIG_FILE"
 echo "history_file=$HISTORY_FILE"
+echo "current_file=$CURRENT_FILE"
+echo "global_best_file=$GLOBAL_BEST_FILE"
 echo "current_vector=$CURRENT_VECTOR"
 if [[ -d "$CURRENT_RUN_DIR" ]]; then
   echo "current_run_dir=$CURRENT_RUN_DIR"
