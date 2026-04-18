@@ -1,6 +1,12 @@
 const { ZKProof, MerkleTree, Blockchain, ZKPBlockchain } = require('../crypto/blockchain-zkp');
 const { Chess } = require('chess.js');
-const { HeuristicPolicyValueModel, TinyFeaturePolicyValueModel, MCTSEngine, parseBestMove } = require('../chess/mcts-stockfish');
+const {
+  HeuristicPolicyValueModel,
+  TinyFeaturePolicyValueModel,
+  TinyNeuralPolicyValueModel,
+  MCTSEngine,
+  parseBestMove,
+} = require('../chess/mcts-stockfish');
 const {
   NESTuner,
   evaluateMixedFitness,
@@ -283,10 +289,33 @@ test('TinyFeaturePolicyValueModel round-trips parameter vector', () => {
   if (!after.every((value, index) => value === nudged[index])) throw new Error('Parameter round-trip failed');
 });
 
+test('TinyNeuralPolicyValueModel emits value and policy', () => {
+  const model = new TinyNeuralPolicyValueModel();
+  const output = model.evaluatePosition(new Chess());
+  if (typeof output.value !== 'number') throw new Error('Missing neural value');
+  if (!Array.isArray(output.policy) || output.policy.length === 0) throw new Error('Missing neural policy');
+});
+
+test('TinyNeuralPolicyValueModel round-trips parameter vector', () => {
+  const model = new TinyNeuralPolicyValueModel();
+  const vector = model.getParameterVector();
+  const nudged = vector.map((value, index) => value + ((index % 7) * 0.01));
+  model.setParameterVector(nudged);
+  const after = model.getParameterVector();
+  if (after.length !== nudged.length) throw new Error('Neural parameter length changed');
+  if (!after.every((value, index) => value === nudged[index])) throw new Error('Neural parameter round-trip failed');
+});
+
 test('evaluatePolicyVector returns numeric fitness', () => {
   const model = new TinyFeaturePolicyValueModel();
   const score = evaluatePolicyVector(model.getParameterVector(), { iterations: 8 });
   if (typeof score !== 'number' || Number.isNaN(score)) throw new Error('Fitness score invalid');
+});
+
+test('evaluatePolicyVector supports neural model', () => {
+  const model = new TinyNeuralPolicyValueModel();
+  const score = evaluatePolicyVector(model.getParameterVector(), { iterations: 4, modelType: 'neural' });
+  if (typeof score !== 'number' || Number.isNaN(score)) throw new Error('Neural fitness score invalid');
 });
 
 test('NES smoke tune runs end-to-end', () => {

@@ -4,6 +4,7 @@
  */
 
 const { Chess } = require('chess.js');
+const { TinyNeuralPolicyValueModel } = require('./neural-model');
 
 const PIECE_VALUES = {
   p: 100,
@@ -847,6 +848,7 @@ if (require.main === module) {
 
 module.exports = {
   HeuristicPolicyValueModel,
+  TinyNeuralPolicyValueModel,
   TinyFeaturePolicyValueModel,
   MCTSEngine,
   StockfishSession,

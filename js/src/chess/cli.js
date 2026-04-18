@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const path = require('path');
-const { TinyFeaturePolicyValueModel } = require('./mcts-stockfish');
+const { TinyFeaturePolicyValueModel, TinyNeuralPolicyValueModel } = require('./mcts-stockfish');
 const {
   evaluateMixedFitness,
   evaluatePolicyVector,
@@ -55,6 +55,12 @@ function parseVector(input) {
   return parsed.map((value) => Number(value));
 }
 
+function defaultVectorForModel(modelType) {
+  return modelType === 'neural'
+    ? new TinyNeuralPolicyValueModel().getParameterVector()
+    : new TinyFeaturePolicyValueModel().getParameterVector();
+}
+
 function parseJson(input, label) {
   if (!input) return null;
   return JSON.parse(input);
@@ -99,6 +105,7 @@ function buildOptions(args) {
     tacticalWeight: parseNumber(args.tacticalWeight, 0.55),
     selfPlayWeight: parseNumber(args.selfPlayWeight, 0.45),
     fitness: args.fitness || 'mixed',
+    modelType: args.modelType || 'feature',
   };
 }
 
@@ -106,7 +113,7 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   const command = args._[0] || 'help';
   const options = buildOptions(args);
-  const vector = parseVector(args.vector);
+  const vector = args.vector ? parseVector(args.vector) : defaultVectorForModel(options.modelType);
 
   switch (command) {
     case 'vector':
@@ -123,7 +130,7 @@ function main() {
       }, args.out);
       break;
     case 'selfplay': {
-      const baseline = args.baseline ? parseVector(args.baseline) : new TinyFeaturePolicyValueModel().getParameterVector();
+      const baseline = args.baseline ? parseVector(args.baseline) : defaultVectorForModel(options.modelType);
       const result = playSelfPlayGame(vector, baseline, {
         ...options,
         candidateColor: args.color || 'w',
@@ -189,9 +196,9 @@ function main() {
     default:
       console.log(`Usage:
   node js/src/chess/cli.js vector
-  node js/src/chess/cli.js eval [--vector '[...]']
-  node js/src/chess/cli.js selfplay [--vector '[...]'] [--baseline '[...]'] [--color w|b] [--fen FEN]
-  node js/src/chess/cli.js tune [--fitness mixed|selfplay|tactical] [--populationSize N] [--generations N]
+  node js/src/chess/cli.js eval [--modelType feature|neural] [--vector '[...]']
+  node js/src/chess/cli.js selfplay [--modelType feature|neural] [--vector '[...]'] [--baseline '[...]'] [--color w|b] [--fen FEN]
+  node js/src/chess/cli.js tune [--modelType feature|neural] [--fitness mixed|selfplay|tactical] [--populationSize N] [--generations N]
   node js/src/chess/cli.js dist:plan [--fitness mixed|selfplay|tactical] [--generation N] [--center '[...]'] [--out file.json]
   node js/src/chess/cli.js dist:worker [--task '{...}' | --taskFile task.json] [--taskIndex N] [--out file.json]
   node js/src/chess/cli.js dist:aggregate [--manifest '{...}' | --manifestFile manifest.json] [--results '[...]' | --resultsFile results.json] [--out file.json]

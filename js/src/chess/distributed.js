@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { TinyFeaturePolicyValueModel } = require('./mcts-stockfish');
+const { TinyFeaturePolicyValueModel, TinyNeuralPolicyValueModel } = require('./mcts-stockfish');
 const {
   NESTuner,
   evaluateMixedFitness,
@@ -27,7 +27,9 @@ function getFitnessFunction(name) {
 function getInitialVector(options = {}) {
   if (Array.isArray(options.centerVector)) return cloneVector(options.centerVector);
   if (Array.isArray(options.vector)) return cloneVector(options.vector);
-  return new TinyFeaturePolicyValueModel().getParameterVector();
+  return (options.modelType === 'neural'
+    ? new TinyNeuralPolicyValueModel()
+    : new TinyFeaturePolicyValueModel()).getParameterVector();
 }
 
 function buildGenerationManifest(options = {}) {

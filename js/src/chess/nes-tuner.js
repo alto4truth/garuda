@@ -1,5 +1,11 @@
 const { Chess } = require('chess.js');
-const { MCTSEngine, TinyFeaturePolicyValueModel } = require('./mcts-stockfish');
+const { MCTSEngine, TinyFeaturePolicyValueModel, TinyNeuralPolicyValueModel } = require('./mcts-stockfish');
+
+function getModelClass(options = {}) {
+  return options.modelType === 'neural'
+    ? TinyNeuralPolicyValueModel
+    : TinyFeaturePolicyValueModel;
+}
 
 class NESTuner {
   constructor(options = {}) {
@@ -81,7 +87,8 @@ class NESTuner {
 }
 
 function createModelFromVector(vector, options = {}) {
-  const model = new TinyFeaturePolicyValueModel({
+  const ModelClass = getModelClass(options);
+  const model = new ModelClass({
     expansionWidth: options.expansionWidth || 6,
   });
   model.setParameterVector(vector);
@@ -194,7 +201,8 @@ function playSelfPlayGame(candidateVector, opponentVector, options = {}) {
 }
 
 function evaluateSelfPlayFitness(vector, options = {}) {
-  const baseline = options.baselineVector || new TinyFeaturePolicyValueModel().getParameterVector();
+  const ModelClass = getModelClass(options);
+  const baseline = options.baselineVector || new ModelClass().getParameterVector();
   const openings = options.openings || [
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     'r1bqkbnr/pppp1ppp/2n5/4p3/3P4/2N5/PPP2PPP/R1BQKBNR w KQkq - 2 3',
@@ -230,7 +238,8 @@ function evaluateMixedFitness(vector, options = {}) {
 }
 
 function runSmokeTune(options = {}) {
-  const model = new TinyFeaturePolicyValueModel();
+  const ModelClass = getModelClass(options);
+  const model = new ModelClass();
   const initialVector = model.getParameterVector();
   const fitnessFn = options.fitnessFn || evaluateMixedFitness;
   const baselineScore = fitnessFn(initialVector, options);
@@ -254,6 +263,7 @@ module.exports = {
   evaluateMixedFitness,
   evaluatePolicyVector,
   evaluateSelfPlayFitness,
+  getModelClass,
   playSelfPlayGame,
   runSmokeTune,
 };
