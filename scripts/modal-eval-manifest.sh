@@ -12,6 +12,7 @@ ITERATIONS="${ITERATIONS:-6}"
 MAX_PLIES="${MAX_PLIES:-16}"
 CPUCT="${CPUCT:-1.35}"
 FITNESS="${FITNESS:-mixed}"
+MODEL_TYPE="${MODEL_TYPE:-neural}"
 
 uv tool run modal run modal_app.py::eval_generation \
   --manifest-path "${MANIFEST_PATH}" \
@@ -19,4 +20,5 @@ uv tool run modal run modal_app.py::eval_generation \
   --max-plies "${MAX_PLIES}" \
   --cpuct "${CPUCT}" \
   --fitness "${FITNESS}" \
+  --model-type "${MODEL_TYPE}" \
   --artifact-prefix "${ARTIFACT_PREFIX}"

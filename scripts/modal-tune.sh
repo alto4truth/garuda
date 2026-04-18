@@ -11,6 +11,7 @@ SIGMA="${SIGMA:-0.12}"
 LEARNING_RATE="${LEARNING_RATE:-0.18}"
 SEED="${SEED:-1337}"
 FITNESS="${FITNESS:-mixed}"
+MODEL_TYPE="${MODEL_TYPE:-neural}"
 
 uv tool run modal run modal_app.py::distributed_tune \
   --population-size "${POPULATION_SIZE}" \
@@ -22,4 +23,5 @@ uv tool run modal run modal_app.py::distributed_tune \
   --learning-rate "${LEARNING_RATE}" \
   --seed "${SEED}" \
   --fitness "${FITNESS}" \
+  --model-type "${MODEL_TYPE}" \
   --artifact-prefix "${ARTIFACT_PREFIX}"

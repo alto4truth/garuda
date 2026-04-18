@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import modal
 
@@ -46,6 +47,11 @@ def _run_cli(args: list[str]) -> str:
     return completed.stdout
 
 
+def _write_local_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n")
+
+
 def _emit_volume_artifact(prefix: str | None, name: str, payload: str) -> str | None:
     if not prefix:
         return None
@@ -55,6 +61,11 @@ def _emit_volume_artifact(prefix: str | None, name: str, payload: str) -> str | 
     target_path.write_text(payload)
     runs_volume.commit()
     return str(target_path)
+
+
+def _write_status(prefix: str, run_dir: Path, payload: dict[str, Any]) -> None:
+    _write_local_json(run_dir / "status.json", payload)
+    _emit_volume_artifact(prefix, "status.json", json.dumps(payload, indent=2) + "\n")
 
 
 @app.function(
@@ -70,6 +81,7 @@ def evaluate_candidate(
     max_plies: int = 16,
     cpuct: float = 1.35,
     fitness: str = "mixed",
+    model_type: str = "feature",
     artifact_prefix: str = "",
 ) -> str:
     payload = _run_cli(
@@ -85,6 +97,8 @@ def evaluate_candidate(
             str(cpuct),
             "--fitness",
             fitness,
+            "--modelType",
+            model_type,
         ]
     )
     task = json.loads(task_json)
@@ -120,18 +134,36 @@ def distributed_tune(
     learning_rate: float = 0.18,
     seed: int = 1337,
     fitness: str = "mixed",
+    model_type: str = "neural",
     artifact_prefix: str = "latest",
 ) -> None:
-    vector_payload = json.loads(_run_cli(["vector"]))
+    vector_payload = json.loads(_run_cli(["vector", "--modelType", model_type]))
     center = vector_payload["vector"]
     run_dir = Path("modal-runs") / artifact_prefix
     run_dir.mkdir(parents=True, exist_ok=True)
+    _write_status(
+        artifact_prefix,
+        run_dir,
+        {
+            "phase": "initializing",
+            "artifactPrefix": artifact_prefix,
+            "modelType": model_type,
+            "populationSize": population_size,
+            "generations": generations,
+            "iterations": iterations,
+            "maxPlies": max_plies,
+            "cpuct": cpuct,
+            "fitness": fitness,
+        },
+    )
 
     aggregated_history = []
     baseline = json.loads(
         _run_cli(
             [
                 "eval",
+                "--modelType",
+                model_type,
                 "--vector",
                 json.dumps(center),
                 "--iterations",
@@ -145,10 +177,26 @@ def distributed_tune(
     )
 
     for generation in range(1, generations + 1):
+        print(f"[modal] generation {generation}/{generations}: planning {population_size} candidates", flush=True)
+        _write_status(
+            artifact_prefix,
+            run_dir,
+            {
+                "phase": "planning",
+                "generation": generation,
+                "generations": generations,
+                "artifactPrefix": artifact_prefix,
+                "modelType": model_type,
+                "populationSize": population_size,
+                "fitness": fitness,
+            },
+        )
         manifest = json.loads(
             _run_cli(
                 [
                     "dist:plan",
+                    "--modelType",
+                    model_type,
                     "--generation",
                     str(generation),
                     "--fitness",
@@ -166,11 +214,23 @@ def distributed_tune(
                 ]
             )
         )
-        (run_dir / f"generation-{generation:03d}.manifest.json").write_text(
-            json.dumps(manifest, indent=2) + "\n"
-        )
+        _write_local_json(run_dir / f"generation-{generation:03d}.manifest.json", manifest)
 
         task_payloads = [json.dumps(task) for task in manifest["tasks"]]
+        print(f"[modal] generation {generation}/{generations}: evaluating {len(task_payloads)} candidates", flush=True)
+        _write_status(
+            artifact_prefix,
+            run_dir,
+            {
+                "phase": "evaluating",
+                "generation": generation,
+                "generations": generations,
+                "artifactPrefix": artifact_prefix,
+                "modelType": model_type,
+                "taskCount": len(task_payloads),
+                "fitness": fitness,
+            },
+        )
         results = [
             json.loads(payload)
             for payload in evaluate_candidate.map(
@@ -180,19 +240,21 @@ def distributed_tune(
                     "max_plies": max_plies,
                     "cpuct": cpuct,
                     "fitness": fitness,
+                    "model_type": model_type,
                     "artifact_prefix": artifact_prefix,
                 },
             )
         ]
 
-        (run_dir / f"generation-{generation:03d}.results.json").write_text(
-            json.dumps(results, indent=2) + "\n"
-        )
+        _write_local_json(run_dir / f"generation-{generation:03d}.results.json", results)
 
+        print(f"[modal] generation {generation}/{generations}: aggregating", flush=True)
         summary = json.loads(
             _run_cli(
                 [
                     "dist:aggregate",
+                    "--modelType",
+                    model_type,
                     "--manifest",
                     json.dumps(manifest),
                     "--results",
@@ -208,8 +270,25 @@ def distributed_tune(
                 ]
             )
         )
-        (run_dir / f"generation-{generation:03d}.summary.json").write_text(
-            json.dumps(summary, indent=2) + "\n"
+        _write_local_json(run_dir / f"generation-{generation:03d}.summary.json", summary)
+        _write_status(
+            artifact_prefix,
+            run_dir,
+            {
+                "phase": "generation_complete",
+                "generation": generation,
+                "generations": generations,
+                "artifactPrefix": artifact_prefix,
+                "modelType": model_type,
+                "bestScore": summary["bestScore"],
+                "nextCenterScore": summary["nextCenterScore"],
+                "bestTaskId": summary["bestTaskId"],
+                "completedTaskCount": summary["completedTaskCount"],
+            },
+        )
+        print(
+            f"[modal] generation {generation}/{generations}: best={summary['bestScore']:.4f} center={summary['nextCenterScore']:.4f}",
+            flush=True,
         )
 
         center = summary["nextCenter"]
@@ -217,6 +296,7 @@ def distributed_tune(
 
     final_payload = {
         "kind": "modal-distributed-run",
+        "modelType": model_type,
         "fitness": fitness,
         "populationSize": population_size,
         "generations": generations,
@@ -230,7 +310,18 @@ def distributed_tune(
         "localRunDir": str(run_dir),
         "remoteVolumeDir": f"{RUNS_DIR}/{artifact_prefix}",
     }
-    (run_dir / "final.json").write_text(json.dumps(final_payload, indent=2) + "\n")
+    _write_local_json(run_dir / "final.json", final_payload)
+    _write_status(
+        artifact_prefix,
+        run_dir,
+        {
+            "phase": "completed",
+            "artifactPrefix": artifact_prefix,
+            "modelType": model_type,
+            "bestScore": max((entry["bestScore"] for entry in aggregated_history), default=baseline.get("mixed", 0)),
+            "finalCenter": center,
+        },
+    )
     print(json.dumps(final_payload, indent=2))
 
 
@@ -241,6 +332,7 @@ def eval_generation(
     max_plies: int = 16,
     cpuct: float = 1.35,
     fitness: str = "mixed",
+    model_type: str = "neural",
     artifact_prefix: str = "manual",
 ) -> None:
     manifest = json.loads(Path(manifest_path).read_text())
@@ -254,6 +346,7 @@ def eval_generation(
                 "max_plies": max_plies,
                 "cpuct": cpuct,
                 "fitness": fitness,
+                "model_type": model_type,
                 "artifact_prefix": artifact_prefix,
             },
         )
