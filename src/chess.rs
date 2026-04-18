@@ -293,6 +293,8 @@ pub enum GameStatus {
     Ongoing,
     Checkmate { loser: Color },
     Stalemate { side_to_move: Color },
+    DrawByFiftyMoveRule,
+    DrawByRepetition,
 }
 
 #[derive(Debug, Clone)]
@@ -770,6 +772,9 @@ impl Position {
     }
 
     pub fn game_status(&self) -> GameStatus {
+        if self.halfmove_clock >= 100 {
+            return GameStatus::DrawByFiftyMoveRule;
+        }
         let legal_moves = self.legal_moves();
         if !legal_moves.is_empty() {
             return GameStatus::Ongoing;
@@ -782,6 +787,23 @@ impl Position {
             GameStatus::Stalemate {
                 side_to_move: self.side_to_move,
             }
+        }
+    }
+
+    pub fn game_status_with_history(&self, repetition_history: &[u64]) -> GameStatus {
+        let status = self.game_status();
+        if status != GameStatus::Ongoing {
+            return status;
+        }
+        let current_key = self.repetition_key();
+        let current_count = repetition_history
+            .iter()
+            .filter(|candidate| **candidate == current_key)
+            .count();
+        if current_count >= 3 {
+            GameStatus::DrawByRepetition
+        } else {
+            GameStatus::Ongoing
         }
     }
 
@@ -837,7 +859,9 @@ impl Position {
         let king_safety_score = match self.game_status() {
             GameStatus::Checkmate { loser: Color::White } => -10_000.0,
             GameStatus::Checkmate { loser: Color::Black } => 10_000.0,
-            GameStatus::Stalemate { .. } => 0.0,
+            GameStatus::Stalemate { .. }
+            | GameStatus::DrawByFiftyMoveRule
+            | GameStatus::DrawByRepetition => 0.0,
             GameStatus::Ongoing => {
                 let white_in_check = self.is_in_check(Color::White);
                 let black_in_check = self.is_in_check(Color::Black);
@@ -867,6 +891,13 @@ impl Position {
     }
 
     fn zobrist_like_key(&self) -> u64 {
+        let mut key = self.repetition_key();
+        key ^= (self.halfmove_clock as u64) << 32;
+        key ^= self.fullmove_number as u64;
+        key
+    }
+
+    pub fn repetition_key(&self) -> u64 {
         let mut key = 0xcbf2_9ce4_8422_2325u64;
         for (square, piece) in self.iter_pieces() {
             let piece_code = match (piece.color, piece.kind) {
@@ -906,8 +937,6 @@ impl Position {
         if let Some(square) = self.en_passant_target {
             key ^= 0x1111_0000_0000_1111 ^ square.0 as u64;
         }
-        key ^= (self.halfmove_clock as u64) << 32;
-        key ^= self.fullmove_number as u64;
         key
     }
 
@@ -1187,7 +1216,9 @@ impl PolicyValueModel for TinyNeuralModel {
             let terminal_value = match position.game_status() {
                 GameStatus::Checkmate { loser } if loser == position.side_to_move() => -1.0,
                 GameStatus::Checkmate { .. } => 1.0,
-                GameStatus::Stalemate { .. } => 0.0,
+                GameStatus::Stalemate { .. }
+                | GameStatus::DrawByFiftyMoveRule
+                | GameStatus::DrawByRepetition => 0.0,
                 GameStatus::Ongoing => value,
             };
             return PolicyValue {
@@ -1342,7 +1373,9 @@ impl<M: PolicyValueModel> Engine<M> {
     fn negamax(&self, position: &Position, depth: usize, mut alpha: f32, beta: f32) -> f32 {
         match position.game_status() {
             GameStatus::Checkmate { .. } => return -10_000.0 + depth as f32,
-            GameStatus::Stalemate { .. } => return 0.0,
+            GameStatus::Stalemate { .. }
+            | GameStatus::DrawByFiftyMoveRule
+            | GameStatus::DrawByRepetition => return 0.0,
             GameStatus::Ongoing => {}
         }
         if depth == 0 {
@@ -1386,7 +1419,9 @@ impl<M: PolicyValueModel> Engine<M> {
     fn quiescence(&self, position: &Position, mut alpha: f32, beta: f32, depth: usize) -> f32 {
         match position.game_status() {
             GameStatus::Checkmate { .. } => return -10_000.0 + depth as f32,
-            GameStatus::Stalemate { .. } => return 0.0,
+            GameStatus::Stalemate { .. }
+            | GameStatus::DrawByFiftyMoveRule
+            | GameStatus::DrawByRepetition => return 0.0,
             GameStatus::Ongoing => {}
         }
 
@@ -1714,6 +1749,27 @@ mod tests {
             GameStatus::Stalemate {
                 side_to_move: Color::Black,
             }
+        );
+    }
+
+    #[test]
+    fn detects_fifty_move_draw() {
+        let position = Position::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 100 51").unwrap();
+        assert_eq!(position.game_status(), GameStatus::DrawByFiftyMoveRule);
+    }
+
+    #[test]
+    fn detects_threefold_repetition_from_history() {
+        let position = Position::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 4 3").unwrap();
+        let history = vec![
+            position.repetition_key(),
+            0x1234_u64,
+            position.repetition_key(),
+            position.repetition_key(),
+        ];
+        assert_eq!(
+            position.game_status_with_history(&history),
+            GameStatus::DrawByRepetition
         );
     }
 }

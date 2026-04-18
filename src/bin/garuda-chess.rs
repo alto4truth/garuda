@@ -126,6 +126,8 @@ fn format_status(status: GameStatus) -> &'static str {
             garuda::chess::Color::White => "stalemate:white-to-move",
             garuda::chess::Color::Black => "stalemate:black-to-move",
         },
+        GameStatus::DrawByFiftyMoveRule => "draw:fifty-move-rule",
+        GameStatus::DrawByRepetition => "draw:threefold-repetition",
     }
 }
 
@@ -171,10 +173,12 @@ fn play_match_game(
     garuda_color: garuda::chess::Color,
     emit_moves: bool,
     start_position: &Position,
-) -> Result<Position, String> {
+) -> Result<(Position, GameStatus), String> {
     let mut position = start_position.clone();
+    let mut repetition_history = vec![position.repetition_key()];
     for ply in 0..plies {
-        if position.game_status() != GameStatus::Ongoing {
+        let status = position.game_status_with_history(&repetition_history);
+        if status != GameStatus::Ongoing {
             break;
         }
 
@@ -195,8 +199,10 @@ fn play_match_game(
             return Err(format!("illegal move from engine: {uci_move}"));
         };
         position = next;
+        repetition_history.push(position.repetition_key());
     }
-    Ok(position)
+    let final_status = position.game_status_with_history(&repetition_history);
+    Ok((position, final_status))
 }
 
 fn main() {
@@ -303,7 +309,7 @@ fn main() {
                 }
             };
             let start_position = Position::starting_position();
-            let position = match play_match_game(
+            let (position, status) = match play_match_game(
                 &engine,
                 &mut uci,
                 plies,
@@ -318,7 +324,7 @@ fn main() {
                     std::process::exit(3);
                 }
             };
-            println!("result {}", format_status(position.game_status()));
+            println!("result {}", format_status(status));
             println!("final_fen {}", position.to_fen());
         }
         "bo-uci" => {
@@ -365,7 +371,7 @@ fn main() {
                     garuda::chess::Color::Black
                 };
                 let start_position = &openings[game_index % openings.len()];
-                let position = match play_match_game(
+                let (_position, status) = match play_match_game(
                     &engine,
                     &mut uci,
                     plies,
@@ -380,7 +386,6 @@ fn main() {
                         std::process::exit(3);
                     }
                 };
-                let status = position.game_status();
                 let result = match status {
                     GameStatus::Checkmate { loser } if loser == garuda_color => {
                         uci_wins += 1;
@@ -390,7 +395,10 @@ fn main() {
                         garuda_wins += 1;
                         "garuda-win"
                     }
-                    GameStatus::Stalemate { .. } | GameStatus::Ongoing => {
+                    GameStatus::Stalemate { .. }
+                    | GameStatus::DrawByFiftyMoveRule
+                    | GameStatus::DrawByRepetition
+                    | GameStatus::Ongoing => {
                         draws += 1;
                         "draw"
                     }
