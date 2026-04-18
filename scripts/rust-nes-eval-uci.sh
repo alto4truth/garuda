@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENGINE_CMD="$ROOT_DIR/scripts/stockfish-js-uci.sh"
+ENGINE_CMD="${ENGINE_CMD:-$ROOT_DIR/scripts/stockfish-js-uci.sh}"
 BINARY="$ROOT_DIR/target/release/garuda-chess"
-OPENINGS_FILE="$ROOT_DIR/data/rust-stockfish-openings.fen"
+OPENINGS_FILE="${7:-${OPENINGS_FILE:-$ROOT_DIR/data/rust-stockfish-openings.fen}}"
 VECTOR_FILE="${1:-/tmp/garuda-model.vec}"
 GAMES="${2:-2}"
 PLIES="${3:-12}"

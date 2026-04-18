@@ -20,6 +20,7 @@ CPUCT="${12:-1.35}"
 BO_GAMES="${13:-2}"
 BO_PLIES="${14:-4}"
 BO_MOVETIME_MS="${15:-10}"
+OPENINGS_FILE="${16:-$ROOT_DIR/data/rust-stockfish-openings.fen}"
 
 if [[ ! -x "$TRAINER" ]]; then
   echo "missing trainer at $TRAINER" >&2
@@ -58,11 +59,11 @@ for seed in $SEEDS; do
   echo "=== seed=$seed train ==="
   "$TRAINER" "$vector_file" "$INPUT_VECTOR" \
     "$GENERATIONS" "$POPULATION_SIZE" "$SIGMA" "$LEARNING_RATE" "$seed" \
-    "$TRAIN_GAMES" "$TRAIN_PLIES" "$TRAIN_MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$run_dir"
+    "$TRAIN_GAMES" "$TRAIN_PLIES" "$TRAIN_MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$OPENINGS_FILE" "$run_dir"
 
   echo
   echo "=== seed=$seed eval ==="
-  eval_output="$("$EVALUATOR" "$vector_file" "$TRAIN_GAMES" "$TRAIN_PLIES" "$TRAIN_MOVETIME_MS" "$SIMULATIONS" "$CPUCT")"
+  eval_output="$("$EVALUATOR" "$vector_file" "$TRAIN_GAMES" "$TRAIN_PLIES" "$TRAIN_MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$OPENINGS_FILE")"
   printf "%s\n" "$eval_output"
   train_summary_file="$run_dir/summary.txt"
   best_generation_for_seed="$(sed -n 's/^best_generation=\(.*\)$/\1/p' "$train_summary_file")"
@@ -72,7 +73,7 @@ for seed in $SEEDS; do
 
   echo
   echo "=== seed=$seed bo ==="
-  bo_output="$("$BO_RUNNER" "$BO_GAMES" "$BO_PLIES" "$BO_MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$vector_file")"
+  bo_output="$("$BO_RUNNER" "$BO_GAMES" "$BO_PLIES" "$BO_MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$vector_file" "$OPENINGS_FILE")"
   printf "%s\n" "$bo_output"
   summary_line="$(printf "%s\n" "$bo_output" | grep '^summary ')"
   bo_garuda_wins="$(printf "%s\n" "$summary_line" | sed -n 's/.*garuda_wins=\([0-9][0-9]*\).*/\1/p')"

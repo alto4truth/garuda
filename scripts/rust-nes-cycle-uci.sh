@@ -20,7 +20,8 @@ CPUCT="${12:-1.35}"
 BO_GAMES="${13:-10}"
 BO_PLIES="${14:-0}"
 BO_MOVETIME_MS="${15:-20}"
-RUN_DIR="${16:-${OUTPUT_VECTOR}.run}"
+OPENINGS_FILE="${16:-$ROOT_DIR/data/rust-stockfish-openings.fen}"
+RUN_DIR="${17:-${OUTPUT_VECTOR}.run}"
 
 if [[ ! -x "$TRAINER" ]]; then
   echo "missing trainer at $TRAINER" >&2
@@ -45,6 +46,7 @@ echo "input_vector=${INPUT_VECTOR:-<default-model>}"
 echo "generations=$GENERATIONS population_size=$POPULATION_SIZE sigma=$SIGMA learning_rate=$LEARNING_RATE seed=$SEED"
 echo "train_games=$GAMES train_max_plies=$PLIES train_movetime_ms=$MOVETIME_MS simulations=$SIMULATIONS cpuct=$CPUCT"
 echo "bo_games=$BO_GAMES bo_max_plies=$BO_PLIES bo_movetime_ms=$BO_MOVETIME_MS"
+echo "openings_file=$OPENINGS_FILE"
 echo "run_dir=$RUN_DIR"
 echo
 
@@ -52,17 +54,17 @@ echo "=== train ==="
 if [[ -n "$INPUT_VECTOR" ]]; then
   "$TRAINER" "$OUTPUT_VECTOR" "$INPUT_VECTOR" \
     "$GENERATIONS" "$POPULATION_SIZE" "$SIGMA" "$LEARNING_RATE" "$SEED" \
-    "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$RUN_DIR"
+    "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$OPENINGS_FILE" "$RUN_DIR"
 else
-  "$TRAINER" "$OUTPUT_VECTOR" \
+  "$TRAINER" "$OUTPUT_VECTOR" "" \
     "$GENERATIONS" "$POPULATION_SIZE" "$SIGMA" "$LEARNING_RATE" "$SEED" \
-    "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$RUN_DIR"
+    "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$OPENINGS_FILE" "$RUN_DIR"
 fi
 
 echo
 echo "=== eval ==="
-"$EVALUATOR" "$OUTPUT_VECTOR" "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT"
+"$EVALUATOR" "$OUTPUT_VECTOR" "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$OPENINGS_FILE"
 
 echo
 echo "=== bo ==="
-"$BO_RUNNER" "$BO_GAMES" "$BO_PLIES" "$BO_MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$OUTPUT_VECTOR"
+"$BO_RUNNER" "$BO_GAMES" "$BO_PLIES" "$BO_MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$OUTPUT_VECTOR" "$OPENINGS_FILE"

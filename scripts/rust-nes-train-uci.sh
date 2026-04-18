@@ -2,9 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENGINE_CMD="$ROOT_DIR/scripts/stockfish-js-uci.sh"
+ENGINE_CMD="${ENGINE_CMD:-$ROOT_DIR/scripts/stockfish-js-uci.sh}"
 BINARY="$ROOT_DIR/target/release/garuda-chess"
-OPENINGS_FILE="$ROOT_DIR/data/rust-stockfish-openings.fen"
 OUTPUT_VECTOR="${1:-$ROOT_DIR/rust-nes-uci.vec}"
 INPUT_VECTOR="${2:-/tmp/garuda-model.vec}"
 GENERATIONS="${3:-4}"
@@ -17,10 +16,15 @@ PLIES="${9:-12}"
 MOVETIME_MS="${10:-10}"
 SIMULATIONS="${11:-16}"
 CPUCT="${12:-1.35}"
-RUN_DIR="${13:-${OUTPUT_VECTOR}.run}"
+OPENINGS_FILE="${13:-${OPENINGS_FILE:-$ROOT_DIR/data/rust-stockfish-openings.fen}}"
+RUN_DIR="${14:-${OUTPUT_VECTOR}.run}"
 
 cd "$ROOT_DIR"
 cargo build --release --bin garuda-chess >/dev/null
+
+if [[ -z "$INPUT_VECTOR" ]]; then
+  INPUT_VECTOR="/tmp/garuda-model.vec"
+fi
 
 if [[ ! -f "$INPUT_VECTOR" ]]; then
   "$BINARY" model-vector > "$INPUT_VECTOR"

@@ -2,15 +2,15 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENGINE_CMD="$ROOT_DIR/scripts/stockfish-js-uci.sh"
+ENGINE_CMD="${ENGINE_CMD:-$ROOT_DIR/scripts/stockfish-js-uci.sh}"
 BINARY="$ROOT_DIR/target/release/garuda-chess"
-OPENINGS_FILE="$ROOT_DIR/data/rust-stockfish-openings.fen"
 GAMES="${1:-10}"
 PLIES="${2:-0}"
 MOVETIME_MS="${3:-50}"
 SIMULATIONS="${4:-64}"
 CPUCT="${5:-1.35}"
 VECTOR_FILE="${6:-}"
+OPENINGS_FILE="${7:-${OPENINGS_FILE:-$ROOT_DIR/data/rust-stockfish-openings.fen}}"
 
 cd "$ROOT_DIR"
 cargo build --release --bin garuda-chess >/dev/null
