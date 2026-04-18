@@ -184,7 +184,7 @@ fn play_match_game(
 
         let side = position.side_to_move();
         let uci_move = if side == garuda_color {
-            match engine.best_move(&position) {
+            match engine.best_move_with_history(&position, &repetition_history) {
                 Some(chess_move) => chess_move.uci(),
                 None => break,
             }

@@ -1308,6 +1308,15 @@ impl<M: PolicyValueModel> Engine<M> {
     }
 
     pub fn best_move(&self, position: &Position) -> Option<ChessMove> {
+        let repetition_history = [position.repetition_key()];
+        self.best_move_with_history(position, &repetition_history)
+    }
+
+    pub fn best_move_with_history(
+        &self,
+        position: &Position,
+        repetition_history: &[u64],
+    ) -> Option<ChessMove> {
         let moves = self.ordered_moves(position);
         if moves.is_empty() {
             return None;
@@ -1324,7 +1333,15 @@ impl<M: PolicyValueModel> Engine<M> {
             let root_moves = self.ordered_root_moves(position, principal_move.clone());
             for chess_move in root_moves {
                 let child = position.apply_move(&chess_move);
-                let score = -self.negamax(&child, search_depth.saturating_sub(1), -beta, -alpha);
+                let mut child_history = repetition_history.to_vec();
+                child_history.push(child.repetition_key());
+                let score = -self.negamax(
+                    &child,
+                    search_depth.saturating_sub(1),
+                    -beta,
+                    -alpha,
+                    &child_history,
+                );
                 if score > best_score {
                     best_score = score;
                     best_move = Some(chess_move);
@@ -1370,8 +1387,15 @@ impl<M: PolicyValueModel> Engine<M> {
         moves
     }
 
-    fn negamax(&self, position: &Position, depth: usize, mut alpha: f32, beta: f32) -> f32 {
-        match position.game_status() {
+    fn negamax(
+        &self,
+        position: &Position,
+        depth: usize,
+        mut alpha: f32,
+        beta: f32,
+        repetition_history: &[u64],
+    ) -> f32 {
+        match position.game_status_with_history(repetition_history) {
             GameStatus::Checkmate { .. } => return -10_000.0 + depth as f32,
             GameStatus::Stalemate { .. }
             | GameStatus::DrawByFiftyMoveRule
@@ -1379,7 +1403,13 @@ impl<M: PolicyValueModel> Engine<M> {
             GameStatus::Ongoing => {}
         }
         if depth == 0 {
-            return self.quiescence(position, alpha, beta, self.config.quiescence_depth);
+            return self.quiescence(
+                position,
+                alpha,
+                beta,
+                self.config.quiescence_depth,
+                repetition_history,
+            );
         }
 
         let cache_key = (position.zobrist_like_key(), depth);
@@ -1396,7 +1426,9 @@ impl<M: PolicyValueModel> Engine<M> {
         let mut completed_search = true;
         for chess_move in moves {
             let child = position.apply_move(&chess_move);
-            let score = -self.negamax(&child, depth - 1, -beta, -alpha);
+            let mut child_history = repetition_history.to_vec();
+            child_history.push(child.repetition_key());
+            let score = -self.negamax(&child, depth - 1, -beta, -alpha, &child_history);
             best_score = best_score.max(score);
             alpha = alpha.max(score);
             if alpha >= beta {
@@ -1416,8 +1448,15 @@ impl<M: PolicyValueModel> Engine<M> {
         static_score * 0.8 + model_score * 0.2
     }
 
-    fn quiescence(&self, position: &Position, mut alpha: f32, beta: f32, depth: usize) -> f32 {
-        match position.game_status() {
+    fn quiescence(
+        &self,
+        position: &Position,
+        mut alpha: f32,
+        beta: f32,
+        depth: usize,
+        repetition_history: &[u64],
+    ) -> f32 {
+        match position.game_status_with_history(repetition_history) {
             GameStatus::Checkmate { .. } => return -10_000.0 + depth as f32,
             GameStatus::Stalemate { .. }
             | GameStatus::DrawByFiftyMoveRule
@@ -1443,7 +1482,9 @@ impl<M: PolicyValueModel> Engine<M> {
         let mut best_score = stand_pat;
         for chess_move in tactical_moves {
             let child = position.apply_move(&chess_move);
-            let score = -self.quiescence(&child, -beta, -alpha, depth - 1);
+            let mut child_history = repetition_history.to_vec();
+            child_history.push(child.repetition_key());
+            let score = -self.quiescence(&child, -beta, -alpha, depth - 1, &child_history);
             best_score = best_score.max(score);
             alpha = alpha.max(score);
             if alpha >= beta {
@@ -1594,6 +1635,28 @@ mod tests {
         );
         let best_move = engine.best_move(&position).unwrap();
         assert_eq!(best_move.uci(), "a1a2");
+    }
+
+    #[test]
+    fn search_scores_threefold_repetition_as_draw() {
+        let position = Position::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 4 3").unwrap();
+        let engine = Engine::new(
+            TinyNeuralModel::default(),
+            SearchConfig {
+                max_depth: 2,
+                ..SearchConfig::default()
+            },
+        );
+        let repetition_history = vec![
+            position.repetition_key(),
+            0xfeed_face_u64,
+            position.repetition_key(),
+            position.repetition_key(),
+        ];
+        assert_eq!(
+            engine.negamax(&position, 1, f32::NEG_INFINITY, f32::INFINITY, &repetition_history),
+            0.0
+        );
     }
 
     #[test]
