@@ -15,8 +15,7 @@ DEFAULT_VOLUME_NAME = "garuda-chess-runs"
 
 
 image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .apt_install("nodejs", "npm")
+    modal.Image.from_registry("node:20-bookworm-slim", add_python="3.11")
     .add_local_file("package.json", f"{REPO_ROOT}/package.json", copy=True)
     .add_local_file("package-lock.json", f"{REPO_ROOT}/package-lock.json", copy=True)
     .add_local_dir(
