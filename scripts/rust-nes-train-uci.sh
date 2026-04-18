@@ -17,6 +17,7 @@ PLIES="${9:-12}"
 MOVETIME_MS="${10:-10}"
 SIMULATIONS="${11:-16}"
 CPUCT="${12:-1.35}"
+RUN_DIR="${13:-${OUTPUT_VECTOR}.run}"
 
 cd "$ROOT_DIR"
 cargo build --release --bin garuda-chess >/dev/null
@@ -28,4 +29,4 @@ fi
 exec "$BINARY" nes-train-uci \
   "$ENGINE_CMD" "$OUTPUT_VECTOR" "$INPUT_VECTOR" \
   "$GENERATIONS" "$POPULATION_SIZE" "$SIGMA" "$LEARNING_RATE" "$SEED" \
-  "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$OPENINGS_FILE"
+  "$GAMES" "$PLIES" "$MOVETIME_MS" "$SIMULATIONS" "$CPUCT" "$OPENINGS_FILE" "$RUN_DIR"

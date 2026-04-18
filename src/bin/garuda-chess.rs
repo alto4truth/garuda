@@ -3,6 +3,7 @@ use garuda::chess::{
     Position, SearchConfig, TinyNeuralModel,
 };
 use std::fs;
+use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -25,7 +26,66 @@ fn print_usage() {
     eprintln!("  garuda-chess bo-uci-mcts <engine_command> [games] [max_plies_or_0] [movetime_ms] [simulations] [cpuct] [openings_file]");
     eprintln!("  garuda-chess bo-uci-mcts-vector <engine_command> <vector_file> [games] [max_plies_or_0] [movetime_ms] [simulations] [cpuct] [openings_file]");
     eprintln!("  garuda-chess nes-eval-uci <engine_command> [vector_file] [games] [max_plies_or_0] [movetime_ms] [simulations] [cpuct] [openings_file]");
-    eprintln!("  garuda-chess nes-train-uci <engine_command> <output_vector_file> [input_vector_file] [generations] [population_size] [sigma] [learning_rate] [seed] [games] [max_plies_or_0] [movetime_ms] [simulations] [cpuct] [openings_file]");
+    eprintln!("  garuda-chess nes-train-uci <engine_command> <output_vector_file> [input_vector_file] [generations] [population_size] [sigma] [learning_rate] [seed] [games] [max_plies_or_0] [movetime_ms] [simulations] [cpuct] [openings_file] [run_dir]");
+}
+
+fn vector_to_line(vector: &[f32]) -> String {
+    vector
+        .iter()
+        .map(|value| value.to_string())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn write_vector_file(path: &str, vector: &[f32]) -> Result<(), String> {
+    fs::write(path, format!("{}\n", vector_to_line(vector)))
+        .map_err(|error| format!("failed to write vector file {path}: {error}"))
+}
+
+fn append_file_line(path: &str, line: &str) -> Result<(), String> {
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|error| format!("failed to open log file {path}: {error}"))?;
+    writeln!(file, "{line}").map_err(|error| format!("failed to append log file {path}: {error}"))
+}
+
+fn write_nes_train_run_config(
+    run_dir: &str,
+    engine_command: &str,
+    output_vector_file: &str,
+    input_vector_file: Option<&str>,
+    generations: usize,
+    population_size: usize,
+    sigma: f32,
+    learning_rate: f32,
+    seed: u64,
+    games: usize,
+    max_plies: Option<usize>,
+    movetime_ms: u64,
+    simulations: usize,
+    cpuct: f32,
+    openings_count: usize,
+) -> Result<(), String> {
+    fs::create_dir_all(run_dir)
+        .map_err(|error| format!("failed to create run directory {run_dir}: {error}"))?;
+    let max_plies_value = max_plies
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "none".to_string());
+    let input_vector_value = input_vector_file.unwrap_or("<default-model>");
+    let config_path = format!("{run_dir}/config.txt");
+    let config = format!(
+        "engine_command={engine_command}\noutput_vector_file={output_vector_file}\ninput_vector_file={input_vector_value}\ngenerations={generations}\npopulation_size={population_size}\nsigma={sigma}\nlearning_rate={learning_rate}\nseed={seed}\ngames={games}\nmax_plies={max_plies_value}\nmovetime_ms={movetime_ms}\nsimulations={simulations}\ncpuct={cpuct}\nopenings_count={openings_count}\n"
+    );
+    fs::write(&config_path, config)
+        .map_err(|error| format!("failed to write run config {config_path}: {error}"))?;
+    let progress_path = format!("{run_dir}/progress.tsv");
+    fs::write(
+        &progress_path,
+        "generation\tinitial_fitness\tbest_candidate_fitness\tupdated_fitness\ttotal_evaluations\tvector_file\n",
+    )
+    .map_err(|error| format!("failed to write progress header {progress_path}: {error}"))
 }
 
 struct UciEngine {
@@ -1400,8 +1460,9 @@ fn main() {
                 print_usage();
                 std::process::exit(1);
             };
-            let mut vector = match args.next() {
-                Some(input_vector_file) => match load_parameter_vector(&input_vector_file) {
+            let input_vector_file = args.next();
+            let mut vector = match input_vector_file.as_ref() {
+                Some(input_vector_file) => match load_parameter_vector(input_vector_file) {
                     Ok(vector) => vector,
                     Err(error) => {
                         eprintln!("{error}");
@@ -1430,6 +1491,7 @@ fn main() {
                 },
                 None => vec![Position::starting_position()],
             };
+            let run_dir = args.next();
             let uci_config = UciFitnessConfig {
                 games,
                 max_plies,
@@ -1438,6 +1500,28 @@ fn main() {
                 cpuct,
                 openings,
             };
+            if let Some(run_dir) = run_dir.as_deref() {
+                if let Err(error) = write_nes_train_run_config(
+                    run_dir,
+                    &engine_command,
+                    &output_vector_file,
+                    input_vector_file.as_deref(),
+                    generations,
+                    population_size,
+                    sigma,
+                    learning_rate,
+                    seed,
+                    games,
+                    max_plies,
+                    movetime_ms,
+                    simulations,
+                    cpuct,
+                    uci_config.openings.len(),
+                ) {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+            }
             let mut total_evaluations = 0usize;
             for generation in 0..generations.max(1) {
                 let (
@@ -1471,31 +1555,94 @@ fn main() {
                     best_candidate_fitness,
                     updated_fitness
                 );
+                if let Some(run_dir) = run_dir.as_deref() {
+                    let checkpoint_path =
+                        format!("{run_dir}/generation-{:04}.vec", generation + 1);
+                    let progress_path = format!("{run_dir}/progress.tsv");
+                    if let Err(error) = write_vector_file(&checkpoint_path, &next_vector) {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                    if let Err(error) = append_file_line(
+                        &progress_path,
+                        &format!(
+                            "{}\t{}\t{}\t{}\t{}\t{}",
+                            generation + 1,
+                            initial_fitness,
+                            best_candidate_fitness,
+                            updated_fitness,
+                            total_evaluations,
+                            checkpoint_path
+                        ),
+                    ) {
+                        eprintln!("{error}");
+                        std::process::exit(2);
+                    }
+                }
                 vector = next_vector;
             }
-            let line = vector
-                .iter()
-                .map(|value| value.to_string())
-                .collect::<Vec<_>>()
-                .join(" ");
-            if let Err(error) = fs::write(&output_vector_file, format!("{line}\n")) {
-                eprintln!("failed to write output vector: {error}");
+            if let Err(error) = write_vector_file(&output_vector_file, &vector) {
+                eprintln!("{error}");
                 std::process::exit(2);
             }
-            let final_fitness = match evaluate_mcts_model_against_uci(
+            if let Some(run_dir) = run_dir.as_deref() {
+                let latest_path = format!("{run_dir}/latest.vec");
+                if let Err(error) = write_vector_file(&latest_path, &vector) {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+            }
+            let final_result = match evaluate_mcts_model_against_uci(
                 TinyNeuralModel::from_parameter_vector(&vector).unwrap_or_default(),
                 &engine_command,
                 &uci_config,
             ) {
-                Ok(result) => result.fitness,
+                Ok(result) => result,
                 Err(error) => {
                     eprintln!("{error}");
                     std::process::exit(3);
                 }
             };
-            println!("final_fitness {}", final_fitness);
+            if let Some(run_dir) = run_dir.as_deref() {
+                let progress_path = format!("{run_dir}/progress.tsv");
+                let summary_path = format!("{run_dir}/summary.txt");
+                if let Err(error) = append_file_line(
+                    &progress_path,
+                    &format!(
+                        "final\t{0}\t{0}\t{0}\t{1}\t{2}",
+                        final_result.fitness,
+                        total_evaluations,
+                        format!("{run_dir}/latest.vec")
+                    ),
+                ) {
+                    eprintln!("{error}");
+                    std::process::exit(2);
+                }
+                let summary = format!(
+                    "final_fitness={}\ntotal_evaluations={}\ngaruda_wins={}\nuci_wins={}\ndraws={}\noutput_vector={}\n",
+                    final_result.fitness,
+                    total_evaluations,
+                    final_result.garuda_wins,
+                    final_result.uci_wins,
+                    final_result.draws,
+                    output_vector_file
+                );
+                if let Err(error) = fs::write(&summary_path, summary) {
+                    eprintln!("failed to write run summary {summary_path}: {error}");
+                    std::process::exit(2);
+                }
+            }
+            println!("final_fitness {}", final_result.fitness);
             println!("total_evaluations {}", total_evaluations);
+            println!("garuda_wins {}", final_result.garuda_wins);
+            println!("uci_wins {}", final_result.uci_wins);
+            println!("draws {}", final_result.draws);
             println!("output_vector {}", output_vector_file);
+            if let Some(run_dir) = run_dir.as_deref() {
+                println!("run_dir {}", run_dir);
+                println!("progress_file {run_dir}/progress.tsv");
+                println!("summary_file {run_dir}/summary.txt");
+            }
         }
         _ => {
             print_usage();
