@@ -4,11 +4,11 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 fn print_usage() {
     eprintln!("usage:");
-    eprintln!("  garuda-chess bestmove [fen]");
+    eprintln!("  garuda-chess bestmove [fen] [garuda_depth] [garuda_quiescence]");
     eprintln!("  garuda-chess apply <fen> <uci>");
     eprintln!("  garuda-chess status [fen]");
-    eprintln!("  garuda-chess match-uci <engine_path> [plies] [movetime_ms] [garuda_color]");
-    eprintln!("  garuda-chess bo-uci <engine_path> [games] [plies] [movetime_ms]");
+    eprintln!("  garuda-chess match-uci <engine_path> [plies] [movetime_ms] [garuda_color] [garuda_depth] [garuda_quiescence]");
+    eprintln!("  garuda-chess bo-uci <engine_path> [games] [plies] [movetime_ms] [garuda_depth] [garuda_quiescence]");
 }
 
 struct UciEngine {
@@ -118,6 +118,22 @@ fn format_status(status: GameStatus) -> &'static str {
     }
 }
 
+fn parse_usize_arg(value: Option<String>, default: usize) -> usize {
+    value.and_then(|text| text.parse::<usize>().ok()).unwrap_or(default)
+}
+
+fn parse_u64_arg(value: Option<String>, default: u64) -> u64 {
+    value.and_then(|text| text.parse::<u64>().ok()).unwrap_or(default)
+}
+
+fn build_search_config(depth: usize, quiescence_depth: usize) -> SearchConfig {
+    SearchConfig {
+        max_depth: depth,
+        quiescence_depth,
+        ..SearchConfig::default()
+    }
+}
+
 fn play_match_game(
     engine: &Engine<TinyNeuralModel>,
     uci: &mut UciEngine,
@@ -165,6 +181,9 @@ fn main() {
             let fen = args
                 .next()
                 .unwrap_or_else(|| Position::STARTPOS_FEN.to_string());
+            let garuda_depth = parse_usize_arg(args.next(), SearchConfig::default().max_depth);
+            let garuda_quiescence =
+                parse_usize_arg(args.next(), SearchConfig::default().quiescence_depth);
             let position = match Position::from_fen(&fen) {
                 Ok(position) => position,
                 Err(error) => {
@@ -172,7 +191,10 @@ fn main() {
                     std::process::exit(2);
                 }
             };
-            let engine = Engine::new(TinyNeuralModel::default(), SearchConfig::default());
+            let engine = Engine::new(
+                TinyNeuralModel::default(),
+                build_search_config(garuda_depth, garuda_quiescence),
+            );
             match engine.best_move(&position) {
                 Some(chess_move) => println!("{}", chess_move.uci()),
                 None => {
@@ -223,14 +245,8 @@ fn main() {
                 print_usage();
                 std::process::exit(1);
             };
-            let plies = args
-                .next()
-                .and_then(|text| text.parse::<usize>().ok())
-                .unwrap_or(80);
-            let movetime_ms = args
-                .next()
-                .and_then(|text| text.parse::<u64>().ok())
-                .unwrap_or(50);
+            let plies = parse_usize_arg(args.next(), 80);
+            let movetime_ms = parse_u64_arg(args.next(), 50);
             let garuda_color = match args.next() {
                 Some(text) => match parse_color(&text) {
                     Ok(color) => color,
@@ -241,8 +257,14 @@ fn main() {
                 },
                 None => garuda::chess::Color::White,
             };
+            let garuda_depth = parse_usize_arg(args.next(), SearchConfig::default().max_depth);
+            let garuda_quiescence =
+                parse_usize_arg(args.next(), SearchConfig::default().quiescence_depth);
 
-            let engine = Engine::new(TinyNeuralModel::default(), SearchConfig::default());
+            let engine = Engine::new(
+                TinyNeuralModel::default(),
+                build_search_config(garuda_depth, garuda_quiescence),
+            );
             let mut uci = match UciEngine::spawn(&engine_path) {
                 Ok(uci) => uci,
                 Err(error) => {
@@ -265,20 +287,17 @@ fn main() {
                 print_usage();
                 std::process::exit(1);
             };
-            let games = args
-                .next()
-                .and_then(|text| text.parse::<usize>().ok())
-                .unwrap_or(10);
-            let plies = args
-                .next()
-                .and_then(|text| text.parse::<usize>().ok())
-                .unwrap_or(80);
-            let movetime_ms = args
-                .next()
-                .and_then(|text| text.parse::<u64>().ok())
-                .unwrap_or(50);
+            let games = parse_usize_arg(args.next(), 10);
+            let plies = parse_usize_arg(args.next(), 80);
+            let movetime_ms = parse_u64_arg(args.next(), 50);
+            let garuda_depth = parse_usize_arg(args.next(), SearchConfig::default().max_depth);
+            let garuda_quiescence =
+                parse_usize_arg(args.next(), SearchConfig::default().quiescence_depth);
 
-            let engine = Engine::new(TinyNeuralModel::default(), SearchConfig::default());
+            let engine = Engine::new(
+                TinyNeuralModel::default(),
+                build_search_config(garuda_depth, garuda_quiescence),
+            );
             let mut uci = match UciEngine::spawn(&engine_path) {
                 Ok(uci) => uci,
                 Err(error) => {
