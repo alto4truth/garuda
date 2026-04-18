@@ -46,6 +46,19 @@ pub enum PieceKind {
     King,
 }
 
+impl PieceKind {
+    pub fn centipawn_value(self) -> f32 {
+        match self {
+            PieceKind::Pawn => 100.0,
+            PieceKind::Knight => 320.0,
+            PieceKind::Bishop => 330.0,
+            PieceKind::Rook => 500.0,
+            PieceKind::Queen => 900.0,
+            PieceKind::King => 20_000.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Piece {
     pub color: Color,
@@ -749,6 +762,49 @@ impl Position {
         }
     }
 
+    pub fn static_eval(&self) -> f32 {
+        let material_score = self
+            .iter_pieces()
+            .map(|(_, piece)| match piece.color {
+                Color::White => piece.kind.centipawn_value(),
+                Color::Black => -piece.kind.centipawn_value(),
+            })
+            .sum::<f32>();
+
+        let mobility_score = {
+            let white_moves = self.clone_for_side(Color::White).pseudo_legal_moves().len() as f32;
+            let black_moves = self.clone_for_side(Color::Black).pseudo_legal_moves().len() as f32;
+            (white_moves - black_moves) * 2.0
+        };
+
+        let king_safety_score = match self.game_status() {
+            GameStatus::Checkmate { loser: Color::White } => -10_000.0,
+            GameStatus::Checkmate { loser: Color::Black } => 10_000.0,
+            GameStatus::Stalemate { .. } => 0.0,
+            GameStatus::Ongoing => {
+                let white_in_check = self.is_in_check(Color::White);
+                let black_in_check = self.is_in_check(Color::Black);
+                match (white_in_check, black_in_check) {
+                    (true, false) => -35.0,
+                    (false, true) => 35.0,
+                    _ => 0.0,
+                }
+            }
+        };
+
+        let signed_score = material_score + mobility_score + king_safety_score;
+        match self.side_to_move {
+            Color::White => signed_score,
+            Color::Black => -signed_score,
+        }
+    }
+
+    fn clone_for_side(&self, side_to_move: Color) -> Self {
+        let mut cloned = self.clone();
+        cloned.side_to_move = side_to_move;
+        cloned
+    }
+
     fn push_move_if_valid(&self, from: Square, file: i8, rank: i8, moves: &mut Vec<ChessMove>) -> bool {
         if !(0..8).contains(&file) || !(0..8).contains(&rank) {
             return false;
@@ -1143,7 +1199,8 @@ impl<M: PolicyValueModel> Engine<M> {
                     .find(|entry| entry.chess_move == chess_move)
                     .map(|entry| entry.prior)
                     .unwrap_or(0.0);
-                (chess_move, prior)
+                let tactical_score = self.move_ordering_bonus(position, &chess_move);
+                (chess_move, prior * 1000.0 + tactical_score)
             })
             .collect();
         scored_moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -1157,12 +1214,12 @@ impl<M: PolicyValueModel> Engine<M> {
             GameStatus::Ongoing => {}
         }
         if depth == 0 {
-            return self.evaluate(position).value * 100.0;
+            return self.leaf_score(position);
         }
 
         let moves = self.ordered_moves(position);
         if moves.is_empty() {
-            return self.evaluate(position).value * 100.0;
+            return self.leaf_score(position);
         }
 
         let mut best_score = f32::NEG_INFINITY;
@@ -1176,6 +1233,41 @@ impl<M: PolicyValueModel> Engine<M> {
             }
         }
         best_score
+    }
+
+    fn leaf_score(&self, position: &Position) -> f32 {
+        let model_score = self.evaluate(position).value * 100.0;
+        let static_score = position.static_eval();
+        static_score * 0.8 + model_score * 0.2
+    }
+
+    fn move_ordering_bonus(&self, position: &Position, chess_move: &ChessMove) -> f32 {
+        let moving_piece = position
+            .piece_at(chess_move.from)
+            .map(|piece| piece.kind.centipawn_value())
+            .unwrap_or(0.0);
+        let capture_square = if position.en_passant_target == Some(chess_move.to)
+            && position.piece_at(chess_move.to).is_none()
+            && chess_move.from.file() != chess_move.to.file()
+        {
+            Square::from_file_rank(chess_move.to.file(), chess_move.from.rank()).unwrap()
+        } else {
+            chess_move.to
+        };
+        let capture_bonus = position
+            .piece_at(capture_square)
+            .map(|piece| piece.kind.centipawn_value() - (moving_piece * 0.1))
+            .unwrap_or(0.0);
+        let promotion_bonus = chess_move
+            .promotion
+            .map(|promotion| promotion.centipawn_value())
+            .unwrap_or(0.0);
+        let check_bonus = if position.apply_move(chess_move).is_in_check(position.side_to_move().opposite()) {
+            75.0
+        } else {
+            0.0
+        };
+        capture_bonus + promotion_bonus + check_bonus
     }
 }
 
@@ -1235,6 +1327,27 @@ mod tests {
         );
         let best_move = engine.best_move(&position).unwrap();
         assert_eq!(best_move.uci(), "a7a8");
+    }
+
+    #[test]
+    fn static_eval_rewards_material_advantage() {
+        let winning = Position::from_fen("4k3/8/8/8/8/8/Q7/4K3 w - - 0 1").unwrap();
+        let equal = Position::from_fen("4k3/8/8/8/8/8/8/4K3 w - - 0 1").unwrap();
+        assert!(winning.static_eval() > equal.static_eval());
+    }
+
+    #[test]
+    fn engine_prefers_winning_queen_capture() {
+        let position = Position::from_fen("4k3/8/8/8/8/8/q7/R3K3 w - - 0 1").unwrap();
+        let engine = Engine::new(
+            TinyNeuralModel::default(),
+            SearchConfig {
+                max_depth: 2,
+                ..SearchConfig::default()
+            },
+        );
+        let best_move = engine.best_move(&position).unwrap();
+        assert_eq!(best_move.uci(), "a1a2");
     }
 
     #[test]
