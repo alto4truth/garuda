@@ -14,8 +14,8 @@ if [[ ! -x "$RUNNER" ]]; then
 fi
 
 cd "$ROOT_DIR"
-if [[ ! -x "$ROOT_DIR/target/debug/garuda-chess" ]]; then
-  cargo build --bin garuda-chess
+if [[ ! -x "$ROOT_DIR/target/release/garuda-chess" ]]; then
+  cargo build --release --bin garuda-chess
 fi
 
 if [[ ! -f "$OUTPUT_FILE" ]]; then
