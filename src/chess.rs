@@ -1551,6 +1551,280 @@ impl Default for MctsConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct NesConfig {
+    pub population_size: usize,
+    pub sigma: f32,
+    pub learning_rate: f32,
+    pub seed: u64,
+}
+
+impl Default for NesConfig {
+    fn default() -> Self {
+        Self {
+            population_size: 8,
+            sigma: 0.05,
+            learning_rate: 0.03,
+            seed: 0x4E45_5301,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NesCaseResult {
+    pub name: &'static str,
+    pub chosen_move: Option<String>,
+    pub preferred_hit: bool,
+    pub avoided_hit: bool,
+    pub preferred_policy_mass: f32,
+    pub avoided_policy_mass: f32,
+    pub value_alignment: f32,
+    pub score: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct NesEvaluation {
+    pub total_fitness: f32,
+    pub cases: Vec<NesCaseResult>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NesStepResult {
+    pub initial_fitness: f32,
+    pub best_candidate_fitness: f32,
+    pub updated_fitness: f32,
+    pub evaluations: usize,
+    pub vector: Vec<f32>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NesCase {
+    name: &'static str,
+    fen: &'static str,
+    preferred: &'static [&'static str],
+    avoided: &'static [&'static str],
+    target_value: f32,
+}
+
+const NES_CASES: &[NesCase] = &[
+    NesCase {
+        name: "mate-in-one",
+        fen: "7k/R7/6K1/8/8/8/8/8 w - - 0 1",
+        preferred: &["a7a8"],
+        avoided: &[],
+        target_value: 1.0,
+    },
+    NesCase {
+        name: "win-free-queen",
+        fen: "4k3/8/8/8/8/8/q7/R3K3 w - - 0 1",
+        preferred: &["a1a2"],
+        avoided: &[],
+        target_value: 1.0,
+    },
+    NesCase {
+        name: "save-hanging-queen",
+        fen: "4k3/8/8/8/4r3/8/4Q3/4K3 w - - 0 1",
+        preferred: &["e2f2", "e2d2", "e2c4"],
+        avoided: &["e2e3", "e2d3"],
+        target_value: 0.5,
+    },
+    NesCase {
+        name: "white-opening-space",
+        fen: Position::STARTPOS_FEN,
+        preferred: &["e2e4", "d2d4", "c2c4", "g1f3"],
+        avoided: &["a2a3", "h2h3", "a2a4", "h2h4"],
+        target_value: 0.15,
+    },
+    NesCase {
+        name: "black-central-reply",
+        fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+        preferred: &["c7c5", "e7e5", "e7e6", "c7c6"],
+        avoided: &["a7a6", "h7h6", "a7a5", "h7h5"],
+        target_value: 0.1,
+    },
+    NesCase {
+        name: "promotion-race",
+        fen: "4k3/6P1/8/8/8/8/8/4K3 w - - 0 1",
+        preferred: &["g7g8q", "g7g8n"],
+        avoided: &[],
+        target_value: 1.0,
+    },
+];
+
+#[derive(Debug, Clone)]
+struct XorShift64 {
+    state: u64,
+}
+
+impl XorShift64 {
+    fn new(seed: u64) -> Self {
+        Self {
+            state: seed.max(1),
+        }
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        let mut value = self.state;
+        value ^= value << 13;
+        value ^= value >> 7;
+        value ^= value << 17;
+        self.state = value;
+        value
+    }
+
+    fn next_f32(&mut self) -> f32 {
+        let value = self.next_u64() >> 40;
+        (value as f32) / ((1u32 << 24) as f32)
+    }
+
+    fn standard_normal(&mut self) -> f32 {
+        let u1 = self.next_f32().max(1.0e-7);
+        let u2 = self.next_f32();
+        let radius = (-2.0 * u1.ln()).sqrt();
+        let theta = 2.0 * std::f32::consts::PI * u2;
+        radius * theta.cos()
+    }
+}
+
+pub fn evaluate_nes_fitness(
+    vector: &[f32],
+    mcts_config: MctsConfig,
+) -> Result<NesEvaluation, String> {
+    let model = TinyNeuralModel::from_parameter_vector(vector)?;
+    let mut total_fitness = 0.0;
+    let mut cases = Vec::with_capacity(NES_CASES.len());
+
+    for nes_case in NES_CASES {
+        let position = Position::from_fen(nes_case.fen)
+            .map_err(|error| format!("invalid NES case FEN ({}): {error}", nes_case.name))?;
+        let evaluation = model.evaluate(&position);
+        let preferred_policy_mass = evaluation
+            .policy
+            .iter()
+            .filter(|entry| nes_case.preferred.iter().any(|uci| *uci == entry.chess_move.uci()))
+            .map(|entry| entry.prior)
+            .sum::<f32>();
+        let avoided_policy_mass = evaluation
+            .policy
+            .iter()
+            .filter(|entry| nes_case.avoided.iter().any(|uci| *uci == entry.chess_move.uci()))
+            .map(|entry| entry.prior)
+            .sum::<f32>();
+        let value_alignment = evaluation.value * nes_case.target_value;
+        let engine = MctsEngine::new(model.clone(), mcts_config);
+        let chosen_move = engine.best_move(&position).map(|chess_move| chess_move.uci());
+        let preferred_hit = chosen_move
+            .as_ref()
+            .map(|uci| nes_case.preferred.iter().any(|candidate| candidate == uci))
+            .unwrap_or(false);
+        let avoided_hit = chosen_move
+            .as_ref()
+            .map(|uci| nes_case.avoided.iter().any(|candidate| candidate == uci))
+            .unwrap_or(false);
+
+        let mut score = preferred_policy_mass * 1.25 - avoided_policy_mass * 0.75;
+        score += value_alignment * 0.5;
+        if preferred_hit {
+            score += 2.0;
+        }
+        if avoided_hit {
+            score -= 2.0;
+        }
+
+        total_fitness += score;
+        cases.push(NesCaseResult {
+            name: nes_case.name,
+            chosen_move,
+            preferred_hit,
+            avoided_hit,
+            preferred_policy_mass,
+            avoided_policy_mass,
+            value_alignment,
+            score,
+        });
+    }
+
+    Ok(NesEvaluation {
+        total_fitness,
+        cases,
+    })
+}
+
+pub fn run_nes_step(
+    base_vector: &[f32],
+    nes_config: NesConfig,
+    mcts_config: MctsConfig,
+) -> Result<NesStepResult, String> {
+    if base_vector.is_empty() {
+        return Err("base NES vector was empty".to_string());
+    }
+
+    let initial = evaluate_nes_fitness(base_vector, mcts_config)?;
+    let pair_count = (nes_config.population_size.max(2) + 1) / 2;
+    let sigma = nes_config.sigma.max(1.0e-4);
+    let mut rng = XorShift64::new(nes_config.seed);
+    let mut gradient = vec![0.0; base_vector.len()];
+    let mut best_candidate_fitness = initial.total_fitness;
+    let mut best_vector = base_vector.to_vec();
+    let mut evaluations = 0usize;
+
+    for _ in 0..pair_count {
+        let epsilon: Vec<f32> = (0..base_vector.len())
+            .map(|_| rng.standard_normal())
+            .collect();
+        let plus_vector: Vec<f32> = base_vector
+            .iter()
+            .zip(epsilon.iter())
+            .map(|(weight, noise)| weight + (noise * sigma))
+            .collect();
+        let minus_vector: Vec<f32> = base_vector
+            .iter()
+            .zip(epsilon.iter())
+            .map(|(weight, noise)| weight - (noise * sigma))
+            .collect();
+
+        let plus_fitness = evaluate_nes_fitness(&plus_vector, mcts_config)?.total_fitness;
+        let minus_fitness = evaluate_nes_fitness(&minus_vector, mcts_config)?.total_fitness;
+        evaluations += 2;
+
+        if plus_fitness > best_candidate_fitness {
+            best_candidate_fitness = plus_fitness;
+            best_vector = plus_vector.clone();
+        }
+        if minus_fitness > best_candidate_fitness {
+            best_candidate_fitness = minus_fitness;
+            best_vector = minus_vector.clone();
+        }
+
+        let delta = plus_fitness - minus_fitness;
+        for (index, noise) in epsilon.iter().enumerate() {
+            gradient[index] += delta * noise;
+        }
+    }
+
+    let gradient_scale = nes_config.learning_rate / (pair_count as f32 * sigma);
+    let mut updated_vector: Vec<f32> = base_vector
+        .iter()
+        .zip(gradient.iter())
+        .map(|(weight, grad)| weight + (gradient_scale * grad))
+        .collect();
+    let updated_fitness = evaluate_nes_fitness(&updated_vector, mcts_config)?.total_fitness;
+    evaluations += 1;
+    if best_candidate_fitness > updated_fitness {
+        updated_vector = best_vector;
+    }
+    let final_fitness = evaluate_nes_fitness(&updated_vector, mcts_config)?.total_fitness;
+    evaluations += 1;
+
+    Ok(NesStepResult {
+        initial_fitness: initial.total_fitness,
+        best_candidate_fitness,
+        updated_fitness: final_fitness,
+        evaluations,
+        vector: updated_vector,
+    })
+}
+
 #[derive(Debug, Clone)]
 struct MctsChildStats {
     prior: f32,
@@ -2260,6 +2534,43 @@ mod tests {
         let vector = model.parameter_vector();
         let rebuilt = TinyNeuralModel::from_parameter_vector(&vector).unwrap();
         assert_eq!(rebuilt.parameter_vector(), vector);
+    }
+
+    #[test]
+    fn nes_fitness_evaluation_returns_cases() {
+        let vector = TinyNeuralModel::default().parameter_vector();
+        let evaluation = evaluate_nes_fitness(
+            &vector,
+            MctsConfig {
+                simulations: 8,
+                ..MctsConfig::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(evaluation.cases.len(), NES_CASES.len());
+        assert!(evaluation.total_fitness.is_finite());
+    }
+
+    #[test]
+    fn nes_step_preserves_vector_shape() {
+        let vector = TinyNeuralModel::default().parameter_vector();
+        let result = run_nes_step(
+            &vector,
+            NesConfig {
+                population_size: 4,
+                sigma: 0.03,
+                learning_rate: 0.02,
+                seed: 7,
+            },
+            MctsConfig {
+                simulations: 8,
+                ..MctsConfig::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(result.vector.len(), vector.len());
+        assert!(result.updated_fitness.is_finite());
+        assert!(result.evaluations >= 3);
     }
 
     #[test]
