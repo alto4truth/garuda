@@ -1214,6 +1214,7 @@ pub struct SearchConfig {
     pub cpuct: f32,
     pub root_policy_width: usize,
     pub max_depth: usize,
+    pub quiescence_depth: usize,
 }
 
 impl Default for SearchConfig {
@@ -1222,6 +1223,7 @@ impl Default for SearchConfig {
             cpuct: 1.35,
             root_policy_width: DEFAULT_POLICY_WIDTH,
             max_depth: 2,
+            quiescence_depth: 4,
         }
     }
 }
@@ -1293,12 +1295,12 @@ impl<M: PolicyValueModel> Engine<M> {
 
     fn negamax(&self, position: &Position, depth: usize, mut alpha: f32, beta: f32) -> f32 {
         match position.game_status() {
-            GameStatus::Checkmate { .. } => return -10_000.0 - depth as f32,
+            GameStatus::Checkmate { .. } => return -10_000.0 + depth as f32,
             GameStatus::Stalemate { .. } => return 0.0,
             GameStatus::Ongoing => {}
         }
         if depth == 0 {
-            return self.leaf_score(position);
+            return self.quiescence(position, alpha, beta, self.config.quiescence_depth);
         }
 
         let cache_key = (position.zobrist_like_key(), depth);
@@ -1312,16 +1314,20 @@ impl<M: PolicyValueModel> Engine<M> {
         }
 
         let mut best_score = f32::NEG_INFINITY;
+        let mut completed_search = true;
         for chess_move in moves {
             let child = position.apply_move(&chess_move);
             let score = -self.negamax(&child, depth - 1, -beta, -alpha);
             best_score = best_score.max(score);
             alpha = alpha.max(score);
             if alpha >= beta {
+                completed_search = false;
                 break;
             }
         }
-        self.table.borrow_mut().insert(cache_key, best_score);
+        if completed_search {
+            self.table.borrow_mut().insert(cache_key, best_score);
+        }
         best_score
     }
 
@@ -1329,6 +1335,41 @@ impl<M: PolicyValueModel> Engine<M> {
         let model_score = self.evaluate(position).value * 100.0;
         let static_score = position.static_eval();
         static_score * 0.8 + model_score * 0.2
+    }
+
+    fn quiescence(&self, position: &Position, mut alpha: f32, beta: f32, depth: usize) -> f32 {
+        match position.game_status() {
+            GameStatus::Checkmate { .. } => return -10_000.0 + depth as f32,
+            GameStatus::Stalemate { .. } => return 0.0,
+            GameStatus::Ongoing => {}
+        }
+
+        let stand_pat = self.leaf_score(position);
+        if stand_pat >= beta {
+            return stand_pat;
+        }
+        alpha = alpha.max(stand_pat);
+
+        if depth == 0 {
+            return stand_pat;
+        }
+
+        let tactical_moves = self.ordered_tactical_moves(position);
+        if tactical_moves.is_empty() {
+            return stand_pat;
+        }
+
+        let mut best_score = stand_pat;
+        for chess_move in tactical_moves {
+            let child = position.apply_move(&chess_move);
+            let score = -self.quiescence(&child, -beta, -alpha, depth - 1);
+            best_score = best_score.max(score);
+            alpha = alpha.max(score);
+            if alpha >= beta {
+                break;
+            }
+        }
+        best_score
     }
 
     fn move_ordering_bonus(&self, position: &Position, chess_move: &ChessMove) -> f32 {
@@ -1358,6 +1399,26 @@ impl<M: PolicyValueModel> Engine<M> {
             0.0
         };
         capture_bonus + promotion_bonus + check_bonus
+    }
+
+    fn ordered_tactical_moves(&self, position: &Position) -> Vec<ChessMove> {
+        self.ordered_moves(position)
+            .into_iter()
+            .filter(|chess_move| {
+                chess_move.promotion.is_some()
+                    || self.is_capture(position, chess_move)
+                    || position.apply_move(chess_move).is_in_check(position.side_to_move().opposite())
+            })
+            .collect()
+    }
+
+    fn is_capture(&self, position: &Position, chess_move: &ChessMove) -> bool {
+        if position.piece_at(chess_move.to).is_some() {
+            return true;
+        }
+        position.en_passant_target == Some(chess_move.to)
+            && position.piece_at(chess_move.to).is_none()
+            && chess_move.from.file() != chess_move.to.file()
     }
 }
 
