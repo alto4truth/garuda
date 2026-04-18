@@ -114,6 +114,19 @@ impl Square {
     pub fn rank(self) -> u8 {
         self.0 / 8
     }
+
+    pub fn from_algebraic(text: &str) -> Option<Self> {
+        let bytes = text.as_bytes();
+        if bytes.len() != 2 {
+            return None;
+        }
+        let file = bytes[0].to_ascii_lowercase();
+        let rank = bytes[1];
+        if !(b'a'..=b'h').contains(&file) || !(b'1'..=b'8').contains(&rank) {
+            return None;
+        }
+        Self::from_file_rank(file - b'a', rank - b'1')
+    }
 }
 
 impl fmt::Display for Square {
@@ -157,6 +170,26 @@ impl ChessMove {
             });
         }
         uci
+    }
+
+    pub fn from_uci(uci: &str) -> Option<Self> {
+        if uci.len() < 4 {
+            return None;
+        }
+        let from = Square::from_algebraic(&uci[0..2])?;
+        let to = Square::from_algebraic(&uci[2..4])?;
+        let promotion = uci.as_bytes().get(4).and_then(|symbol| match symbol.to_ascii_lowercase() {
+            b'n' => Some(PieceKind::Knight),
+            b'b' => Some(PieceKind::Bishop),
+            b'r' => Some(PieceKind::Rook),
+            b'q' => Some(PieceKind::Queen),
+            _ => None,
+        });
+        Some(Self {
+            from,
+            to,
+            promotion,
+        })
     }
 }
 
@@ -381,6 +414,14 @@ impl Position {
             next.fullmove_number = next.fullmove_number.saturating_add(1);
         }
         next
+    }
+
+    pub fn apply_uci_move(&self, uci: &str) -> Option<Self> {
+        let chess_move = ChessMove::from_uci(uci)?;
+        self.pseudo_legal_moves()
+            .into_iter()
+            .find(|candidate| candidate == &chess_move)
+            .map(|candidate| self.apply_move(&candidate))
     }
 
     pub fn pseudo_legal_moves(&self) -> Vec<ChessMove> {
@@ -774,5 +815,28 @@ mod tests {
             })
         );
         assert_eq!(position.to_fen(), "8/8/3k4/8/8/4K3/8/8 b - - 4 18");
+    }
+
+    #[test]
+    fn parses_uci_moves() {
+        let chess_move = ChessMove::from_uci("e2e4").unwrap();
+        assert_eq!(chess_move.from, Square::from_file_rank(4, 1).unwrap());
+        assert_eq!(chess_move.to, Square::from_file_rank(4, 3).unwrap());
+        assert_eq!(chess_move.uci(), "e2e4");
+    }
+
+    #[test]
+    fn applies_pseudo_legal_uci_move() {
+        let position = Position::starting_position();
+        let next = position.apply_uci_move("b1c3").unwrap();
+        assert_eq!(next.side_to_move(), Color::Black);
+        assert_eq!(
+            next.piece_at(Square::from_file_rank(2, 2).unwrap()),
+            Some(Piece {
+                color: Color::White,
+                kind: PieceKind::Knight,
+            })
+        );
+        assert!(next.piece_at(Square::from_file_rank(1, 0).unwrap()).is_none());
     }
 }
