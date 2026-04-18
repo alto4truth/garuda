@@ -9,8 +9,8 @@ fn print_usage() {
     eprintln!("  garuda-chess bestmove [fen] [garuda_depth] [garuda_quiescence]");
     eprintln!("  garuda-chess apply <fen> <uci>");
     eprintln!("  garuda-chess status [fen]");
-    eprintln!("  garuda-chess match-uci <engine_command> [plies] [movetime_ms] [garuda_color] [garuda_depth] [garuda_quiescence]");
-    eprintln!("  garuda-chess bo-uci <engine_command> [games] [plies] [movetime_ms] [garuda_depth] [garuda_quiescence] [openings_file]");
+    eprintln!("  garuda-chess match-uci <engine_command> [max_plies_or_0] [movetime_ms] [garuda_color] [garuda_depth] [garuda_quiescence]");
+    eprintln!("  garuda-chess bo-uci <engine_command> [games] [max_plies_or_0] [movetime_ms] [garuda_depth] [garuda_quiescence] [openings_file]");
 }
 
 struct UciEngine {
@@ -140,6 +140,17 @@ fn parse_u64_arg(value: Option<String>, default: u64) -> u64 {
     value.and_then(|text| text.parse::<u64>().ok()).unwrap_or(default)
 }
 
+fn parse_optional_plies_arg(value: Option<String>, default: Option<usize>) -> Option<usize> {
+    match value {
+        Some(text) => match text.parse::<usize>().ok() {
+            Some(0) => None,
+            Some(plies) => Some(plies),
+            None => default,
+        },
+        None => default,
+    }
+}
+
 fn build_search_config(depth: usize, quiescence_depth: usize) -> SearchConfig {
     SearchConfig {
         max_depth: depth,
@@ -220,7 +231,7 @@ fn format_pgn_moves(san_moves: &[String], result: &str) -> String {
 fn play_match_game(
     engine: &Engine<TinyNeuralModel>,
     uci: &mut UciEngine,
-    plies: usize,
+    max_plies: Option<usize>,
     movetime_ms: u64,
     garuda_color: garuda::chess::Color,
     emit_moves: bool,
@@ -229,7 +240,13 @@ fn play_match_game(
     let mut position = start_position.clone();
     let mut repetition_history = vec![position.repetition_key()];
     let mut san_moves = Vec::new();
-    for ply in 0..plies {
+    let mut ply = 0usize;
+    loop {
+        if let Some(max_plies) = max_plies {
+            if ply >= max_plies {
+                break;
+            }
+        }
         let status = position.game_status_with_history(&repetition_history);
         if status != GameStatus::Ongoing {
             break;
@@ -262,6 +279,7 @@ fn play_match_game(
         san_moves.push(san);
         position = next;
         repetition_history.push(position.repetition_key());
+        ply += 1;
     }
     let final_status = position.game_status_with_history(&repetition_history);
     Ok((position, final_status, san_moves))
@@ -343,7 +361,7 @@ fn main() {
                 print_usage();
                 std::process::exit(1);
             };
-            let plies = parse_usize_arg(args.next(), 80);
+            let max_plies = parse_optional_plies_arg(args.next(), None);
             let movetime_ms = parse_u64_arg(args.next(), 50);
             let garuda_color = match args.next() {
                 Some(text) => match parse_color(&text) {
@@ -374,7 +392,7 @@ fn main() {
             let (position, status, san_moves) = match play_match_game(
                 &engine,
                 &mut uci,
-                plies,
+                max_plies,
                 movetime_ms,
                 garuda_color,
                 true,
@@ -419,7 +437,7 @@ fn main() {
                 std::process::exit(1);
             };
             let games = parse_usize_arg(args.next(), 10);
-            let plies = parse_usize_arg(args.next(), 80);
+            let max_plies = parse_optional_plies_arg(args.next(), None);
             let movetime_ms = parse_u64_arg(args.next(), 50);
             let garuda_depth = parse_usize_arg(args.next(), SearchConfig::default().max_depth);
             let garuda_quiescence =
@@ -460,7 +478,7 @@ fn main() {
                 let (_position, status, _san_moves) = match play_match_game(
                     &engine,
                     &mut uci,
-                    plies,
+                    max_plies,
                     movetime_ms,
                     garuda_color,
                     false,
